@@ -27,14 +27,14 @@ export function prepVerb(prep) {
 
 /** A dish: a name, the ingredients it needs (each exactly once), and a base tip. */
 export const RECIPES = [
-  { id: 'nasi-goreng', name: 'Nasi Goreng Kilat', items: ['nasi', 'telur', 'cabai'], tip: 30 },
-  { id: 'mie-ayam', name: 'Mie Ayam Pedas', items: ['mie', 'ayam', 'sayur'], tip: 30 },
-  { id: 'ayam-geprek', name: 'Ayam Geprek', items: ['ayam', 'cabai', 'nasi'], tip: 40 },
-  { id: 'telur-balado', name: 'Telur Balado', items: ['telur', 'cabai', 'sayur'], tip: 30 },
-  { id: 'mie-goreng', name: 'Mie Goreng Sayur', items: ['mie', 'sayur', 'telur'], tip: 30 },
-  { id: 'nasi-kecap', name: 'Nasi Ayam Kecap', items: ['nasi', 'ayam', 'kecap'], tip: 40 },
-  { id: 'mie-pedas', name: 'Mie Pedas Kilat', items: ['mie', 'cabai', 'telur'], tip: 35 },
-  { id: 'nasi-sayur', name: 'Nasi Sayur Telur', items: ['nasi', 'sayur', 'telur'], tip: 30 },
+  { id: 'nasi-goreng', name: 'Nasi Goreng Kilat', items: ['nasi', 'telur', 'cabai'], tip: 30, price: '12rb' },
+  { id: 'mie-ayam', name: 'Mie Ayam Pedas', items: ['mie', 'ayam', 'sayur'], tip: 30, price: '10rb' },
+  { id: 'ayam-geprek', name: 'Ayam Geprek', items: ['ayam', 'cabai', 'nasi'], tip: 40, price: '15rb' },
+  { id: 'telur-balado', name: 'Telur Balado', items: ['telur', 'cabai', 'sayur'], tip: 30, price: '8rb' },
+  { id: 'mie-goreng', name: 'Mie Goreng Sayur', items: ['mie', 'sayur', 'telur'], tip: 30, price: '9rb' },
+  { id: 'nasi-kecap', name: 'Nasi Ayam Kecap', items: ['nasi', 'ayam', 'kecap'], tip: 40, price: '13rb' },
+  { id: 'mie-pedas', name: 'Mie Pedas Kilat', items: ['mie', 'cabai', 'telur'], tip: 35, price: '11rb' },
+  { id: 'nasi-sayur', name: 'Nasi Sayur Telur', items: ['nasi', 'sayur', 'telur'], tip: 30, price: '10rb' },
 ];
 
 export function recipeById(id) {

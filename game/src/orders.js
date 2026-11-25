@@ -31,7 +31,7 @@ export function makeOrder(round, rng) {
     bornAt: 0,
     // Who is waiting at the window for this dish: an index into the
     // renderer's CUSTOMERS, so the window shows different faces.
-    customer: Math.floor(rng() * 4),
+    customer: Math.floor(rng() * 6),
   };
 }
 

@@ -4,7 +4,7 @@
 // wood counters), every ingredient drawn so it looks worth serving, and the
 // order board, timer and plates all readable at a glance when shrunk.
 
-import { INGREDIENTS, FRY_TIME, BURN_AFTER } from './recipes.js';
+import { INGREDIENTS, RECIPES, FRY_TIME, BURN_AFTER } from './recipes.js';
 import { burnerState } from './kitchen.js';
 
 export const SCREEN_TITLE = 'title';
@@ -39,13 +39,32 @@ const C = {
 
 export const MUTE_BUTTON = { x: 1208, y: 672, w: 56, h: 36 };
 
-/** The regulars at the serving window: skin, hair, outfit and hat differ. */
+/**
+ * The regulars at the serving window — six different people, not one face
+ * with different hats. Each has a face shape of their own (round, oval,
+ * square jaw, long, wide), a skin tone, a hair style and colour, and an
+ * outfit. The renderer draws their expression from their patience: calm
+ * while they wait, worried as it runs down, angry when it is nearly gone.
+ */
 export const CUSTOMERS = [
-  { name: 'Pak Budi', skin: '#d9a06b', hair: 'white', hairColor: '#e8e8e8', outfit: '#3f6b8a', hat: 'none', glasses: true },
-  { name: 'Bu Sari', skin: '#e8b98a', hair: 'bun', hairColor: '#2b2b2b', outfit: '#b03a2e', hat: 'none', glasses: false },
-  { name: 'Mas Dedi', skin: '#c98a5a', hair: 'peci', hairColor: '#1f1f1f', outfit: '#3f7a4a', hat: 'peci', glasses: false },
-  { name: 'Mbak Rina', skin: '#a06a42', hair: 'curly', hairColor: '#2b2b2b', outfit: '#7a4a8a', hat: 'headband', glasses: false },
+  { name: 'Pak Budi', skin: '#d9a06b', face: 'round', hair: 'grey-side', hairColor: '#e8e8e8', outfit: '#3f6b8a', glasses: true, moustache: true, moustacheColor: '#a8a8a8' },
+  { name: 'Bu Sari', skin: '#e8b98a', face: 'oval', hair: 'bun', hairColor: '#2b2b2b', outfit: '#b03a2e', earrings: true },
+  { name: 'Mas Dedi', skin: '#c98a5a', face: 'square', hair: 'peci', hairColor: '#1f1f1f', outfit: '#3f7a4a', hat: 'peci', stubble: true },
+  { name: 'Mbak Rina', skin: '#a06a42', face: 'long', hair: 'curly', hairColor: '#2b2b2b', outfit: '#7a4a8a', hat: 'headband' },
+  { name: 'Bang Jono', skin: '#8a5a34', face: 'wide', hair: 'bald', hairColor: '#1f1f1f', outfit: '#8a6a2e', moustache: true, moustacheColor: '#1f1f1f', beard: true },
+  { name: 'Teh Dewi', skin: '#f0c8a0', face: 'oval', hair: 'hijab', hairColor: '#b03a6e', outfit: '#b03a6e', hijab: true },
 ];
+
+/** The menu board's four dishes of the day, with their prices. */
+const MENU_TODAY = ['nasi-goreng', 'mie-ayam', 'ayam-geprek', 'telur-balado'];
+
+/** The money box sits on the serving counter, at the window's right end. */
+const MONEY_BOX = { x: 1222, y: 404, w: 30, h: 22 };
+
+/** A customer's spot at the window, one per open order, left to right. */
+function customerSpot(index) {
+  return { x: 972 + index * 106, y: 354 };
+}
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -97,35 +116,73 @@ export function createRenderer(canvas) {
     const chopped = prep === 'chopped';
     const fried = prep === 'fried';
     if (ingId === 'nasi') {
+      // A mound of rice: a shaded dome, grain flecks, fried shallots and
+      // green onion when fried, a krupuk shard leaning on it.
       ctx.fillStyle = '#b8452f';
       ellipse(0, 6, 17, 9);
       ctx.fill();
-      ctx.fillStyle = fried ? '#e8b64c' : '#f7ecd0';
+      ctx.fillStyle = fried ? '#eec25e' : '#f7ecd0';
       ctx.beginPath();
       ctx.arc(0, 2, 13, Math.PI, 0);
       ctx.fill();
-      ctx.fillStyle = fried ? '#c98a2e' : '#e8d9b0';
+      ctx.fillStyle = fried ? '#d9a441' : '#e8d9b0';
       for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.arc(i * 5, -2 + Math.abs(i), 1.6, 0, Math.PI * 2); ctx.fill(); }
-      if (fried) { ctx.fillStyle = '#4da34d'; ctx.fillRect(-8, -6, 4, 2); ctx.fillRect(4, -8, 4, 2); }
+      if (fried) {
+        ctx.fillStyle = '#a34d1e';
+        for (const [sx, sy] of [[-7, -4], [2, -8], [8, -2]]) { ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = '#4da34d';
+        ctx.fillRect(-9, -7, 5, 2);
+        ctx.fillRect(4, -10, 5, 2);
+        ctx.fillStyle = '#e8823a';
+        ctx.beginPath(); ctx.moveTo(12, -2); ctx.lineTo(19, -12); ctx.lineTo(16, -1); ctx.closePath(); ctx.fill();
+      }
     } else if (ingId === 'mie') {
-      ctx.strokeStyle = fried ? '#c98a2e' : '#f2c14e';
+      // A nest of noodles: wavy strands, shallots, chilli slices, a lime
+      // wedge, and a sheen when fried.
+      ctx.strokeStyle = fried ? '#d9a441' : '#f2c14e';
       ctx.lineWidth = 4;
       ctx.lineCap = 'round';
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         ctx.beginPath();
-        ctx.arc(0, 2, 12 - i * 4, Math.PI * 0.15, Math.PI * 1.15);
+        ctx.arc(0, 3, 13 - i * 3.4, Math.PI * 0.1, Math.PI * 1.2);
         ctx.stroke();
       }
-      if (fried) { ctx.fillStyle = '#4da34d'; ctx.fillRect(-10, -10, 5, 3); ctx.fillRect(6, -12, 5, 3); }
+      ctx.strokeStyle = '#b98a1e';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 3, 8, Math.PI * 0.4, Math.PI * 0.9); ctx.stroke();
+      if (fried) {
+        ctx.fillStyle = '#4da34d';
+        ctx.fillRect(-11, -11, 5, 3);
+        ctx.fillRect(7, -13, 5, 3);
+        ctx.fillStyle = '#d9382b';
+        ctx.beginPath(); ctx.arc(-2, -12, 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#7a9b4a';
+        ctx.beginPath(); ctx.moveTo(12, 8); ctx.lineTo(18, 4); ctx.lineTo(16, 11); ctx.closePath(); ctx.fill();
+      }
     } else if (ingId === 'telur') {
       if (fried) {
+        // A fried egg with a crispy, wavy edge and a glossy yolk.
+        ctx.fillStyle = '#f7e8c0';
+        ctx.beginPath();
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2;
+          const rr = 15 + (a % 2 === 0 ? 3 : 0);
+          const px = Math.cos(ang) * rr;
+          const py = 2 + Math.sin(ang) * rr * 0.75;
+          if (a === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
         ctx.fillStyle = '#fff8e0';
-        ellipse(0, 2, 17, 12);
+        ellipse(0, 2, 14, 10);
         ctx.fill();
         ctx.fillStyle = '#f2a93b';
         ctx.beginPath(); ctx.arc(2, 2, 7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#e08a1e';
         ctx.beginPath(); ctx.arc(2, 2, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
       } else {
         ctx.fillStyle = '#fff3d6';
         ellipse(0, 2, 11, 14);
@@ -134,18 +191,30 @@ export function createRenderer(canvas) {
         ctx.beginPath(); ctx.arc(0, -12, 3, 0, Math.PI * 2); ctx.fill();
       }
     } else if (ingId === 'ayam') {
-      ctx.fillStyle = fried ? '#a34d1e' : '#e08a5a';
-      ctx.beginPath(); ctx.arc(-3, 0, 12, 0, Math.PI * 2); ctx.fill();
+      // A chicken drumstick: golden-brown crispy skin with dark speckles,
+      // a pale bone with two knobs.
+      ctx.fillStyle = fried ? '#8a3d12' : '#c96a3a';
+      ctx.beginPath(); ctx.arc(-3, 0, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = fried ? '#c96a2e' : '#e08a5a';
+      ctx.beginPath(); ctx.arc(-3, 0, 11, 0, Math.PI * 2); ctx.fill();
+      if (fried) {
+        ctx.fillStyle = '#7a3410';
+        for (const [sx, sy] of [[-9, -5], [-1, -8], [-8, 4], [3, 3]]) { ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = '#e8823a';
+        ctx.beginPath(); ctx.arc(-6, -3, 3, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.fillStyle = '#f7ecd0';
       ctx.fillRect(6, -2, 10, 4);
       ctx.beginPath(); ctx.arc(18, -4, 3, 0, Math.PI * 2); ctx.arc(18, 4, 3, 0, Math.PI * 2); ctx.fill();
-      if (fried) { ctx.fillStyle = '#7a3410'; ctx.beginPath(); ctx.arc(-7, -4, 3, 0, Math.PI * 2); ctx.fill(); }
     } else if (ingId === 'cabai') {
       if (chopped) {
-        ctx.fillStyle = '#d9382b';
-        for (const [px, py, r] of [[-10, 4, 5], [0, -4, 6], [10, 5, 5], [2, 8, 4]]) { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); }
-        ctx.fillStyle = '#8f1d14';
-        ctx.beginPath(); ctx.arc(0, -4, 2, 0, Math.PI * 2); ctx.fill();
+        // Chilli rings: red circles with pale seeds in the middle.
+        for (const [px, py, r] of [[-10, 4, 6], [0, -5, 7], [10, 5, 6], [2, 8, 5]]) {
+          ctx.fillStyle = '#d9382b';
+          ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#f7ecd0';
+          ctx.beginPath(); ctx.arc(px, py, r * 0.4, 0, Math.PI * 2); ctx.fill();
+        }
       } else {
         ctx.strokeStyle = '#d9382b';
         ctx.lineWidth = 7;
@@ -157,10 +226,15 @@ export function createRenderer(canvas) {
       }
     } else if (ingId === 'sayur') {
       if (chopped) {
+        // Chopped greens with a tomato slice for colour.
         ctx.fillStyle = '#4da34d';
         for (const [px, py] of [[-11, 3], [-2, -5], [8, 2], [0, 8], [11, -6]]) { ctx.fillRect(px, py, 7, 4); }
         ctx.fillStyle = '#2c6b2f';
         ctx.fillRect(-6, 2, 6, 3);
+        ctx.fillStyle = '#d9382b';
+        ctx.beginPath(); ctx.arc(11, -8, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e8a13a';
+        ctx.beginPath(); ctx.arc(11, -8, 2, 0, Math.PI * 2); ctx.fill();
       } else {
         ctx.fillStyle = '#4da34d';
         ellipse(-6, 0, 9, 13);
@@ -183,6 +257,82 @@ export function createRenderer(canvas) {
     }
     ctx.restore();
     void ing;
+  }
+
+  /** Two steam wisps rising from something hot, swaying with the clock. */
+  function drawSteam(x, y, now, scale = 1) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+    ctx.lineWidth = 2 * scale;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 2; i++) {
+      const wob = Math.sin(now * 3 + i * 2.1) * 3 * scale;
+      ctx.beginPath();
+      ctx.moveTo(x - 8 * scale + i * 16 * scale + wob, y);
+      ctx.quadraticCurveTo(x - 6 * scale + i * 16 * scale, y - 10 * scale, x - 8 * scale + i * 16 * scale + wob, y - 18 * scale);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * A finished dish on a plate: the ingredients composed into one meal —
+   * rice or noodles as the base, chicken and egg on top, greens at the
+   * side, chilli slices, a cucumber slice and a krupuk shard for garnish,
+   * kecap drizzled over it, and steam while it is hot.
+   */
+  function drawPlatedDish(items, x, y, size, now, steam = true) {
+    const s = size / 100; // dishes are drawn in a 100px box
+    // The plate itself: white with a blue rim.
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.fillStyle = '#fdfdf8';
+    ellipse(0, 0, 50, 33);
+    ctx.fill();
+    ctx.strokeStyle = '#7a9bb8';
+    ctx.lineWidth = 3;
+    ellipse(0, 0, 44, 28);
+    ctx.stroke();
+    ctx.restore();
+    const has = (id) => items.includes(id);
+    // Food positions and sizes scale with the dish, so a small etalase
+    // plate composes the same way as a full-size serving plate.
+    if (has('nasi')) drawFood('nasi', x - 8 * s, y - 2 * s, 52 * s, 'fried');
+    if (has('mie')) drawFood('mie', x - 6 * s, y - 2 * s, 52 * s, 'fried');
+    if (has('ayam')) drawFood('ayam', x + 22 * s, y - 6 * s, 40 * s, 'fried');
+    if (has('telur')) drawFood('telur', x + 6 * s, y - 12 * s, 34 * s, 'fried');
+    if (has('sayur')) drawFood('sayur', x - 26 * s, y + 8 * s, 30 * s, 'chopped');
+    if (has('cabai')) drawFood('cabai', x + 24 * s, y + 10 * s, 26 * s, 'chopped');
+    // Garnish, drawn in the dish's own 100px box so it scales with it:
+    // a kecap drizzle over the rice or noodles when the dish has kecap,
+    // always a cucumber slice and a krupuk shard at the plate's edge.
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    if (has('kecap')) {
+      ctx.strokeStyle = '#3d2412';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(-22, -8);
+      ctx.lineTo(-10, -2);
+      ctx.lineTo(2, -9);
+      ctx.lineTo(14, -3);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#7a9b4a';
+    ctx.beginPath(); ctx.arc(-34, 12, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c9e0a0';
+    ctx.beginPath(); ctx.arc(-34, 12, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8823a';
+    ctx.beginPath();
+    ctx.moveTo(32, 14);
+    ctx.lineTo(42, 2);
+    ctx.lineTo(40, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (steam && items.length > 0) drawSteam(x - 6 * s, y - 28 * s, now, 0.9 * s);
   }
 
   // ------------------------------------------------------------ the kitchen
@@ -247,28 +397,47 @@ export function createRenderer(canvas) {
     ctx.beginPath(); ctx.moveTo(1192, 78); ctx.lineTo(1192, 94); ctx.stroke();
     ctx.fillStyle = '#9aa5ad';
     ctx.beginPath(); ctx.arc(1192, 96, 5, 0, Math.PI * 2); ctx.fill();
+    // A wall clock in the middle of the band, hands at ten past ten.
+    ctx.fillStyle = '#fdfdf8';
+    ctx.beginPath(); ctx.arc(640, 82, 15, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#3a2a1a';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(640, 82, 15, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(640, 82); ctx.lineTo(635, 73); ctx.moveTo(640, 82); ctx.lineTo(648, 78); ctx.stroke();
+    // A framed picture of a steaming bowl of noodles, next to the clock.
+    ctx.fillStyle = C.woodDark;
+    ctx.fillRect(838, 66, 46, 30);
+    ctx.fillStyle = '#f3e3c2';
+    ctx.fillRect(842, 70, 38, 22);
+    ctx.fillStyle = '#b8452f';
+    ellipse(861, 86, 13, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#f2c14e';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(861, 82, 8, Math.PI * 0.2, Math.PI * 1.1); ctx.stroke();
   }
 
   function drawFloor() {
     ctx.fillStyle = C.wall;
-    ctx.fillRect(0, 168, W, 552);
+    ctx.fillRect(0, 168, W, 472);
     drawWall();
-    // Terracotta tiles in four shades, with the odd sage or cream accent
-    // tile, so the floor reads as worn kitchen tile, not a flat checker.
-    const tile = 56;
-    const shades = ['#c96f4a', '#b95f3d', '#cf7a52', '#b25a38'];
-    for (let ty = 0; ty < 10; ty++) {
+    // Terracotta tiles in close warm tones, so the floor reads as worn
+    // kitchen tile instead of a flat checkerboard: the shades stay within
+    // one family, with only the odd sage or cream accent tile.
+    const tile = 58;
+    const shades = ['#c06a44', '#c4744e', '#ba6440', '#c97a54'];
+    for (let ty = 0; ty < 8; ty++) {
       for (let tx = 0; tx < 23; tx++) {
         const h = tileHash(tx, ty);
-        if (h < 0.05) ctx.fillStyle = '#7a8b5a';
-        else if (h < 0.09) ctx.fillStyle = '#e8d9b0';
+        if (h < 0.03) ctx.fillStyle = '#7a8b5a';
+        else if (h < 0.06) ctx.fillStyle = '#e8d9b0';
         else ctx.fillStyle = shades[Math.floor(h * 4) % 4];
         ctx.fillRect(tx * tile, 176 + ty * tile, tile, tile);
       }
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.14)';
-    for (let ty = 0; ty < 10; ty++) ctx.fillRect(0, 176 + ty * tile, W, 2);
-    for (let tx = 0; tx < 23; tx++) ctx.fillRect(tx * tile, 176, 2, 552);
+    ctx.fillStyle = 'rgba(0,0,0,0.10)';
+    for (let ty = 0; ty < 8; ty++) ctx.fillRect(0, 176 + ty * tile, W, 2);
+    for (let tx = 0; tx < 23; tx++) ctx.fillRect(tx * tile, 176, 2, 464);
     // Wear: faint stains and scuffs on the open floor, never under a counter.
     ctx.fillStyle = 'rgba(0,0,0,0.06)';
     for (const [sx, sy, rx, ry] of [[300, 660, 46, 18], [980, 660, 54, 20], [520, 240, 40, 14], [1120, 600, 36, 14], [180, 620, 30, 12]]) {
@@ -280,13 +449,165 @@ export function createRenderer(canvas) {
     for (const [sx, sy] of [[420, 700], [860, 700], [1050, 250]]) {
       ctx.beginPath(); ctx.arc(sx, sy, 26, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke();
     }
+    // Woven round rugs on the open floor, where the cook crosses the room.
+    drawRug(190, 598, 70);
+    drawRug(1080, 592, 58);
     // Floor mats where the cook stands to work: stove, plates, window.
     drawMat(560, 436, 260, 42, '#4a5d3a', '#33402a');
-    drawMat(380, 636, 340, 48, '#3f6b5e', '#2c4d43');
+    drawMat(380, 600, 340, 32, '#3f6b5e', '#2c4d43');
     drawMat(1000, 496, 156, 48, '#8a4a30', '#6b3822');
     // Wall band above the floor.
     ctx.fillStyle = C.wallTrim;
     ctx.fillRect(0, 168, W, 8);
+    drawStreet();
+  }
+
+  /** A round woven rug: concentric rings in terracotta and cream. */
+  function drawRug(x, y, r) {
+    ctx.fillStyle = '#8a4a30';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#a9713f';
+    ctx.beginPath(); ctx.arc(x, y, r * 0.82, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#e8d9b0';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath(); ctx.arc(x, y, r * 0.62, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#c96f4a';
+    ctx.beginPath(); ctx.arc(x, y, r * 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8d9b0';
+    ctx.beginPath(); ctx.arc(x, y, r * 0.16, 0, Math.PI * 2); ctx.fill();
+  }
+
+  /**
+   * The street below the warung: a striped awning edge, a sidewalk where
+   * two regulars sit eating at small tables, and the road with a parked
+   * motorbike, a cat, and a dashed centre line. The cook never walks here.
+   */
+  function drawStreet() {
+    // Striped awning edge across the warung's front, in the two stretches
+    // not covered by a counter (the stations draw over any overlap).
+    drawAwning(24, 360);
+    drawAwning(760, 496);
+    // Sidewalk.
+    ctx.fillStyle = '#d8cbb2';
+    ctx.fillRect(0, 646, W, 40);
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(0, 646, W, 3);
+    ctx.fillRect(0, 683, W, 3);
+    // Road.
+    ctx.fillStyle = '#3d3a38';
+    ctx.fillRect(0, 686, W, 34);
+    ctx.fillStyle = '#f2c14e';
+    for (let x = 20; x < W; x += 56) ctx.fillRect(x, 701, 30, 4);
+    // A parked motorbike on the road, left.
+    drawMotorbike(150, 712);
+    // A cat sitting on the road, right.
+    ctx.fillStyle = '#4a4a4a';
+    ellipse(1000, 712, 12, 7);
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(1008, 702, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(1003, 696); ctx.lineTo(1005, 690); ctx.lineTo(1008, 696); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(1009, 696); ctx.lineTo(1012, 690); ctx.lineTo(1014, 697); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#4a4a4a';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(989, 712); ctx.quadraticCurveTo(980, 706, 984, 698); ctx.stroke();
+    // Potted plants flanking the sidewalk.
+    drawPlant(52, 686);
+    drawPlant(1236, 686);
+    // Two regulars eating at small tables on the sidewalk, clear of the
+    // awning stripes above them and of the plate labels overhead.
+    drawSeatedCustomer(CUSTOMERS[4], 300, 656);
+    drawSeatedCustomer(CUSTOMERS[5], 860, 656);
+    // Hanging lamps under the awning, glowing warm.
+    drawLamp(200, 646);
+    drawLamp(1100, 646);
+  }
+
+  /** One striped awning segment: red and cream vertical stripes. */
+  function drawAwning(x, w) {
+    for (let i = 0; i < w / 16; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#b03a2e' : '#f3e3c2';
+      ctx.fillRect(x + i * 16, 636, 16, 12);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(x, 646, w, 2);
+  }
+
+  /** A small scooter, parked: two wheels, a body, a handlebar. */
+  function drawMotorbike(x, y) {
+    ctx.fillStyle = '#2b2b2b';
+    ctx.beginPath(); ctx.arc(x - 24, y, 9, 0, Math.PI * 2); ctx.arc(x + 26, y, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8a2f26';
+    ctx.beginPath();
+    ctx.moveTo(x - 30, y - 4);
+    ctx.lineTo(x - 18, y - 16);
+    ctx.lineTo(x + 8, y - 16);
+    ctx.lineTo(x + 22, y - 6);
+    ctx.lineTo(x + 30, y - 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#5d3620';
+    ctx.fillRect(x - 14, y - 22, 16, 6);
+    ctx.strokeStyle = '#2b2b2b';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x + 20, y - 14); ctx.lineTo(x + 28, y - 24); ctx.stroke();
+    ctx.fillStyle = '#f2c14e';
+    ctx.beginPath(); ctx.arc(x + 30, y - 8, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  /** A potted plant: a terracotta pot with green leaves. */
+  function drawPlant(x, y) {
+    ctx.fillStyle = '#4da34d';
+    for (const [lx, ly, lr] of [[-8, -14, 7], [0, -20, 8], [8, -14, 7], [-3, -10, 6]]) {
+      ctx.beginPath(); ctx.arc(x + lx, y + ly, lr, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#b95f3d';
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y - 8);
+    ctx.lineTo(x + 12, y - 8);
+    ctx.lineTo(x + 8, y + 4);
+    ctx.lineTo(x - 8, y + 4);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /** A pendant lamp hanging from the awning, with a warm glow. */
+  function drawLamp(x, y) {
+    ctx.strokeStyle = '#3a2a1a';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 16); ctx.stroke();
+    ctx.fillStyle = 'rgba(242,193,78,0.25)';
+    ctx.beginPath(); ctx.arc(x, y + 26, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a2a1a';
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y + 16);
+    ctx.lineTo(x + 9, y + 16);
+    ctx.lineTo(x + 6, y + 26);
+    ctx.lineTo(x - 6, y + 26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f2c14e';
+    ctx.beginPath(); ctx.arc(x, y + 28, 4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  /** One regular seated at a sidewalk table, eating a plate of food. */
+  function drawSeatedCustomer(c, x, y) {
+    drawCustomer(c, x, y, 0, 0.42);
+    // The table, drawn over the customer's body: round top, one leg.
+    ctx.fillStyle = '#7a4a2b';
+    ctx.fillRect(x - 3, y + 16, 6, 16);
+    ctx.fillStyle = '#a9713f';
+    ellipse(x, y + 16, 36, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#5d3620';
+    ctx.lineWidth = 2;
+    ellipse(x, y + 16, 36, 10);
+    ctx.stroke();
+    // A small plate of food on the table, steaming.
+    drawPlatedDish(['nasi', 'ayam', 'sayur'], x + 8, y + 12, 26, 0, true);
+    ctx.fillStyle = '#7a9b4a';
+    ctx.beginPath(); ctx.arc(x - 20, y + 12, 5, 0, Math.PI * 2); ctx.fill();
   }
 
   /** A woven-look floor mat: dark base, lighter border, dashed centre line. */
@@ -431,20 +752,19 @@ export function createRenderer(canvas) {
         ctx.fillStyle = i % 2 === 0 ? '#e8d9b0' : '#b95f3d';
         ctx.fillRect(s.rect.x + 6 + i * 15, s.rect.y + 4, 13, 8);
       }
-      // The plate.
-      ctx.fillStyle = '#fdfdf8';
-      ellipse(cx, cy, 52, 34);
-      ctx.fill();
-      ctx.strokeStyle = '#d8cdb4';
-      ctx.lineWidth = 2;
-      ellipse(cx, cy, 44, 28);
-      ctx.stroke();
-      // Items on the plate.
+      // The plate, composed into one dish with garnish and steam.
+      if (plate.items.length > 0) {
+        drawPlatedDish(plate.items, cx, cy, 104, game.now, true);
+      } else {
+        ctx.fillStyle = '#fdfdf8';
+        ellipse(cx, cy, 52, 34);
+        ctx.fill();
+        ctx.strokeStyle = '#d8cdb4';
+        ctx.lineWidth = 2;
+        ellipse(cx, cy, 44, 28);
+        ctx.stroke();
+      }
       const n = plate.items.length;
-      plate.items.forEach((ing, i) => {
-        const px = cx + (i - (n - 1) / 2) * 32;
-        drawFood(ing, px, cy - 2, 34, 'ready');
-      });
       const complete = game.orders.some((o) => o.recipe.items.length === n && o.recipe.items.every((ing) => plate.items.includes(ing)));
       if (n > 0 && complete) {
         const pulse = 0.6 + 0.4 * Math.sin(game.now * 5);
@@ -456,72 +776,210 @@ export function createRenderer(canvas) {
     }
   }
 
-  /** One customer at the window: skin, hair, hat and outfit all differ. */
-  function drawCustomer(c, cx, cy) {
-    // Shoulders and outfit, inside the opening.
+  /**
+   * One customer: a face shape of their own (round, oval, square jaw, long
+   * or wide), their skin tone and hair, and an expression that follows
+   * their patience — mood 0 calm (a smile), 1 worried (raised brows, a
+   * sweat drop), 2 angry (angled brows, a frown, flushed cheeks, steam).
+   * Drawn at (cx, cy) — the centre of the head — at the given scale.
+   */
+  function drawCustomer(c, cx, cy, mood = 0, scale = 1) {
+    const r = 40 * scale;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    // Shoulders and outfit.
     ctx.fillStyle = c.outfit;
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 78, 52, 30, 0, Math.PI, 0);
+    ctx.ellipse(0, 78, 52, 30, 0, Math.PI, 0);
     ctx.fill();
-    // Head.
+    // A hijab frames the face and drapes to the shoulders.
+    if (c.hijab) {
+      ctx.fillStyle = c.hairColor;
+      ctx.beginPath(); ctx.arc(0, 6, 50, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(-50, 0, 100, 60);
+    }
+    // The face itself, shaped per person.
     ctx.fillStyle = c.skin;
-    ctx.beginPath(); ctx.arc(cx, cy, 42, 0, Math.PI * 2); ctx.fill();
+    if (c.face === 'round') {
+      ctx.beginPath(); ctx.arc(0, 0, 42, 0, Math.PI * 2); ctx.fill();
+    } else if (c.face === 'oval') {
+      ctx.beginPath(); ctx.ellipse(0, 2, 37, 45, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (c.face === 'square') {
+      // A square jaw, but softly rounded so it still reads as a face.
+      roundRect(-36, -42, 72, 84, 20);
+      ctx.fill();
+    } else if (c.face === 'long') {
+      ctx.beginPath(); ctx.ellipse(0, 2, 34, 49, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (c.face === 'wide') {
+      ctx.beginPath(); ctx.ellipse(0, 0, 47, 38, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Flushed cheeks when angry, before the features go on.
+    if (mood === 2) {
+      ctx.fillStyle = 'rgba(217,56,43,0.28)';
+      ctx.beginPath(); ctx.arc(-22, 12, 10, 0, Math.PI * 2); ctx.arc(22, 12, 10, 0, Math.PI * 2); ctx.fill();
+    }
     // Hair and hats.
     if (c.hair === 'bun') {
       ctx.fillStyle = c.hairColor;
-      ctx.beginPath(); ctx.arc(cx, cy - 34, 44, Math.PI, 0); ctx.fill();
-      ctx.beginPath(); ctx.arc(cx, cy - 40, 13, 0, Math.PI * 2); ctx.fill();
-    } else if (c.hair === 'white') {
+      ctx.beginPath(); ctx.arc(0, -34, 44, Math.PI, 0); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, -40, 13, 0, Math.PI * 2); ctx.fill();
+    } else if (c.hair === 'grey-side') {
+      // Grey hair swept to the side: a low cap, not a tall bowl.
       ctx.fillStyle = c.hairColor;
-      ctx.beginPath(); ctx.arc(cx, cy - 30, 43, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, -26, 40, Math.PI * 1.1, Math.PI * 1.9); ctx.fill();
+      ctx.beginPath(); ctx.arc(-36, -6, 7, 0, Math.PI * 2); ctx.fill();
     } else if (c.hair === 'curly') {
       ctx.fillStyle = c.hairColor;
       for (const [hx, hy, hr] of [[-30, -28, 12], [-10, -38, 13], [12, -38, 13], [30, -26, 12]]) {
-        ctx.beginPath(); ctx.arc(cx + hx, cy + hy, hr, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2); ctx.fill();
       }
-      // Yellow headband.
       ctx.strokeStyle = '#f2c14e';
       ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(cx, cy - 6, 40, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -6, 40, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else if (c.hair === 'bald') {
+      ctx.fillStyle = c.hairColor;
+      ctx.beginPath(); ctx.arc(-40, -6, 7, 0, Math.PI * 2); ctx.arc(40, -6, 7, 0, Math.PI * 2); ctx.fill();
     }
     if (c.hat === 'peci') {
+      // A peci sits on top of the head like a small cap, not a slab over
+      // the forehead.
       ctx.fillStyle = '#1f1f1f';
-      ctx.beginPath(); ctx.arc(cx, cy - 26, 42, Math.PI, 0); ctx.fill();
-      ctx.fillRect(cx - 42, cy - 28, 84, 8);
+      ctx.beginPath(); ctx.arc(0, -38, 30, Math.PI, 0); ctx.fill();
+      ctx.fillRect(-30, -40, 60, 6);
     }
-    // Eyes and smile.
-    ctx.fillStyle = '#2b2b2b';
-    ctx.beginPath(); ctx.arc(cx - 16, cy - 4, 5, 0, Math.PI * 2); ctx.arc(cx + 16, cy - 4, 5, 0, Math.PI * 2); ctx.fill();
+    // Stubble along the jaw, and a beard for Bang Jono.
+    if (c.stubble) {
+      ctx.fillStyle = 'rgba(31,31,31,0.22)';
+      ctx.beginPath(); ctx.arc(0, 22, 30, Math.PI * 0.15, Math.PI * 0.85); ctx.fill();
+    }
+    if (c.beard) {
+      ctx.fillStyle = c.hairColor;
+      ctx.beginPath(); ctx.arc(0, 24, 30, Math.PI * 0.1, Math.PI * 0.9); ctx.fill();
+      ctx.fillStyle = c.skin;
+      ctx.beginPath(); ctx.arc(0, 14, 20, 0, Math.PI * 2); ctx.fill();
+    }
+    // Moustache, in its own colour so a grey moustache still reads on a
+    // pale face.
+    if (c.moustache) {
+      ctx.fillStyle = c.moustacheColor || c.hairColor;
+      ctx.beginPath(); ctx.ellipse(-9, 16, 10, 4, -0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(9, 16, 10, 4, 0.2, 0, Math.PI * 2); ctx.fill();
+    }
+    // Brows: raised when worried, angled down toward the nose when angry.
     ctx.strokeStyle = '#2b2b2b';
     ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(cx, cy + 8, 14, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+    ctx.lineCap = 'round';
+    if (mood === 2) {
+      ctx.beginPath(); ctx.moveTo(-24, -16); ctx.lineTo(-8, -9); ctx.moveTo(24, -16); ctx.lineTo(8, -9); ctx.stroke();
+    } else if (mood === 1) {
+      ctx.beginPath(); ctx.arc(-16, -14, 8, Math.PI * 1.15, Math.PI * 1.85); ctx.arc(16, -14, 8, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(-22, -13); ctx.lineTo(-10, -14); ctx.moveTo(22, -13); ctx.lineTo(10, -14); ctx.stroke();
+    }
+    // Eyes: dots when calm or worried, narrowed slits when angry.
+    ctx.fillStyle = '#2b2b2b';
+    if (mood === 2) {
+      ctx.fillRect(-21, -6, 10, 3);
+      ctx.fillRect(11, -6, 10, 3);
+    } else {
+      ctx.beginPath(); ctx.arc(-16, -4, 5, 0, Math.PI * 2); ctx.arc(16, -4, 5, 0, Math.PI * 2); ctx.fill();
+    }
+    // Mouth: a smile, a flat worried line, or a frown.
+    ctx.strokeStyle = '#2b2b2b';
+    ctx.lineWidth = 3;
+    if (mood === 2) {
+      ctx.beginPath(); ctx.arc(0, 26, 12, Math.PI * 1.2, Math.PI * 1.8); ctx.stroke();
+    } else if (mood === 1) {
+      ctx.beginPath(); ctx.moveTo(-8, 16); ctx.lineTo(8, 16); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(0, 8, 14, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+    }
+    // A sweat drop at the temple while worried; steam over the head when angry.
+    if (mood === 1) {
+      ctx.fillStyle = '#7ab8e0';
+      ctx.beginPath(); ctx.arc(-34, -20, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-34, -26); ctx.lineTo(-31, -19); ctx.lineTo(-37, -19); ctx.closePath(); ctx.fill();
+    }
+    if (mood === 2) {
+      ctx.strokeStyle = 'rgba(120,120,120,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(6, -48); ctx.quadraticCurveTo(2, -56, 6, -62); ctx.stroke();
+    }
+    // Earrings.
+    if (c.earrings) {
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath(); ctx.arc(-36, 6, 3, 0, Math.PI * 2); ctx.arc(36, 6, 3, 0, Math.PI * 2); ctx.fill();
+    }
     if (c.glasses) {
       ctx.strokeStyle = '#2b2b2b';
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx - 16, cy - 4, 9, 0, Math.PI * 2); ctx.arc(cx + 16, cy - 4, 9, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(cx - 7, cy - 4); ctx.lineTo(cx + 7, cy - 4); ctx.stroke();
+      ctx.beginPath(); ctx.arc(-16, -4, 9, 0, Math.PI * 2); ctx.arc(16, -4, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-7, -4); ctx.lineTo(7, -4); ctx.stroke();
     }
+    ctx.restore();
   }
 
   function drawWindow(game) {
     const s = game.stations.find((st) => st.id === 'window');
     const r = s.rect;
-    // The wall opening.
+    // The wall opening, warm inside: a gradient from the lit back wall
+    // down to the darker counter shadow.
     ctx.fillStyle = C.woodDark;
     roundRect(r.x - 6, r.y - 6, r.w + 12, r.h + 12, 12);
     ctx.fill();
-    ctx.fillStyle = '#2f2118';
+    const glow = ctx.createLinearGradient(0, r.y, 0, r.y + r.h);
+    glow.addColorStop(0, '#5d4128');
+    glow.addColorStop(1, '#2f2118');
+    ctx.fillStyle = glow;
     roundRect(r.x, r.y, r.w, r.h, 10);
     ctx.fill();
-    // A waiting customer, peeking in: whoever placed the first open order.
-    const customerIndex = game.orders.length > 0
-      ? (game.orders[0].customer ?? 0)
-      : (game.customerIndex ?? 0);
-    const customer = CUSTOMERS[customerIndex % CUSTOMERS.length];
-    drawCustomer(customer, r.x + 120, r.y + 130);
-    // Name tag on the right of the opening: the game-over panel covers the
-    // centre of the screen, so a tag on the left would be half hidden.
-    text(customer.name, r.x + r.w - 16, r.y + 130, 13, '#fff8e7', 'right');
+    // The etalase shelf on the back wall: three dishes under glass, a
+    // teapot and two glasses of iced tea. It sits high, clear of the
+    // customers' hair below it.
+    ctx.fillStyle = '#6b4423';
+    ctx.fillRect(r.x + 16, r.y + 50, 250, 8);
+    drawPlatedDish(['nasi', 'ayam', 'cabai'], r.x + 56, r.y + 36, 40, game.now, false);
+    drawPlatedDish(['mie', 'telur', 'sayur'], r.x + 128, r.y + 36, 40, game.now, false);
+    drawPlatedDish(['nasi', 'telur', 'sayur'], r.x + 200, r.y + 36, 40, game.now, false);
+    ctx.fillStyle = '#9aa5ad';
+    ctx.beginPath(); ctx.arc(r.x + 248, r.y + 36, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#7a858d';
+    ctx.fillRect(r.x + 244, r.y + 22, 8, 6);
+    ctx.fillStyle = '#d9a441';
+    ctx.fillRect(r.x + 222, r.y + 26, 10, 20);
+    ctx.fillRect(r.x + 238, r.y + 26, 10, 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(r.x + 224, r.y + 28, 3, 14);
+    ctx.fillRect(r.x + 240, r.y + 28, 3, 14);
+    // A glass shine across the opening.
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath();
+    ctx.moveTo(r.x + 60, r.y);
+    ctx.lineTo(r.x + 120, r.y);
+    ctx.lineTo(r.x + 40, r.y + r.h);
+    ctx.lineTo(r.x - 20, r.y + r.h);
+    ctx.closePath();
+    ctx.fill();
+    // The queue at the counter: one customer per open order, each with the
+    // expression their order's patience calls for; when nobody waits, the
+    // next regular stands by, calm.
+    const queue = game.orders.length > 0
+      ? game.orders.map((o) => ({ customer: o.customer ?? 0, frac: Math.max(0, o.patience / o.maxPatience) }))
+      : [{ customer: game.customerIndex ?? 0, frac: 1 }];
+    queue.forEach((q, i) => {
+      const spot = customerSpot(i);
+      const mood = q.frac > 0.6 ? 0 : q.frac > 0.3 ? 1 : 2;
+      drawCustomer(CUSTOMERS[q.customer % CUSTOMERS.length], spot.x, spot.y, mood, 0.85);
+    });
+    // A "BUKA" (open) sign hanging at the window's top-right corner.
+    ctx.fillStyle = '#3d8a3d';
+    roundRect(r.x + r.w - 62, r.y + 8, 50, 24, 5);
+    ctx.fill();
+    ctx.strokeStyle = '#2c6b2f';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(r.x + r.w - 52, r.y + 8); ctx.lineTo(r.x + r.w - 52, r.y); ctx.moveTo(r.x + r.w - 22, r.y + 8); ctx.lineTo(r.x + r.w - 22, r.y); ctx.stroke();
+    text('BUKA', r.x + r.w - 37, r.y + 25, 13, '#fff8e7', 'center');
     // The serving counter and bell.
     ctx.fillStyle = C.counterTop;
     roundRect(r.x, r.y + r.h - 70, r.w, 70, 10);
@@ -531,6 +989,7 @@ export function createRenderer(canvas) {
     ctx.fillRect(r.x + 254, r.y + r.h - 84, 12, 6);
     ctx.fillStyle = '#8a6a1e';
     ctx.beginPath(); ctx.arc(r.x + 260, r.y + r.h - 108, 4, 0, Math.PI * 2); ctx.fill();
+    drawMoneyBox(game);
     const carryingPlate = game.hand && game.hand.kind === 'plate';
     if (carryingPlate) {
       const pulse = 0.6 + 0.4 * Math.sin(game.now * 6);
@@ -540,6 +999,41 @@ export function createRenderer(canvas) {
       ctx.stroke();
     }
     text('antar piring lengkap ke sini', r.x + r.w / 2, r.y + r.h - 26, 13, '#fff8e7', 'center');
+  }
+
+  /** The wooden money box on the counter, with the coins paid in so far. */
+  function drawMoneyBox(game) {
+    const b = MONEY_BOX;
+    // Coins already in the box: a small pile on its lid, capped at ten.
+    const n = Math.min(10, game.coins || 0);
+    for (let i = 0; i < n; i++) {
+      const px = b.x + 6 + (i % 3) * 9;
+      const py = b.y - 3 - Math.floor(i / 3) * 6;
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#d9a441';
+      ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#6b4423';
+    roundRect(b.x, b.y, b.w, b.h, 4);
+    ctx.fill();
+    ctx.fillStyle = '#3a2a1a';
+    ctx.fillRect(b.x + 8, b.y + 2, 14, 3);
+    ctx.fillStyle = '#f2c14e';
+    text('Rp', b.x + b.w / 2, b.y + b.h - 5, 9, '#f2c14e', 'center');
+    // Coins flying in from a paying customer, on an arc.
+    for (const c of game.coinAnims) {
+      if (c.t < 0) continue;
+      const f = Math.min(1, c.t / c.dur);
+      const mx = (c.x0 + c.x1) / 2;
+      const my = Math.min(c.y0, c.y1) - 60;
+      const x = (1 - f) * (1 - f) * c.x0 + 2 * (1 - f) * f * mx + f * f * c.x1;
+      const y = (1 - f) * (1 - f) * c.y0 + 2 * (1 - f) * f * my + f * f * c.y1;
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff3d6';
+      ctx.beginPath(); ctx.arc(x - 1.5, y - 1.5, 2, 0, Math.PI * 2); ctx.fill();
+    }
   }
 
   function drawTrash(game) {
@@ -608,13 +1102,12 @@ export function createRenderer(canvas) {
       ellipse(hx, hy, 24, 18);
       ctx.stroke();
       if (game.hand.kind === 'plate') {
-        game.hand.items.forEach((ing, i) => {
-          const px = hx + (i - (game.hand.items.length - 1) / 2) * 14;
-          drawFood(ing, px, hy, 16, 'ready');
-        });
+        drawPlatedDish(game.hand.items, hx, hy, 40, game.now, true);
       } else {
         const prep = game.hand.prep === 'ready' ? 'ready' : 'raw';
         drawFood(game.hand.ing, hx, hy, 28, prep);
+        // A fried ingredient in hand is still hot: steam over it.
+        if (prep === 'ready' && INGREDIENTS[game.hand.ing].prep === 'fry') drawSteam(hx, hy - 16, game.now, 0.7);
       }
     }
     // Click target marker.
@@ -701,20 +1194,32 @@ export function createRenderer(canvas) {
   }
 
   function drawOrderBoard(game) {
-    // The board itself: tall enough that every line of a ticket (dish name,
-    // ingredient icons, patience bar, seconds, points) sits inside its card
-    // with clear padding — the points line used to ride the card's bottom
-    // edge and read as clipped. It sits below the wall band (y 64–100).
+    // The board itself: a menu chalkboard on the left, three order tickets
+    // to its right. Every line of a ticket (dish name, customer, ingredient
+    // icons, patience bar, seconds, points) sits inside its card with
+    // clear padding.
     ctx.fillStyle = C.wood;
     roundRect(12, 100, W - 24, 106, 10);
     ctx.fill();
+    // The menu board: today's dishes with their prices, on a chalkboard.
     ctx.fillStyle = C.woodDark;
-    text('PAPAN', 32, 122, 14, '#e8d9b0');
-    text('PESANAN', 32, 140, 14, '#e8d9b0');
-    text('sajikan sebelum', 32, 164, 12, '#e8d9b0');
-    text('sabar habis!', 32, 180, 12, '#e8d9b0');
-    const slotW = 330;
-    const slotX0 = 200;
+    roundRect(20, 106, 196, 94, 8);
+    ctx.fill();
+    ctx.fillStyle = '#2c4636';
+    roundRect(24, 110, 188, 86, 6);
+    ctx.fill();
+    text('MENU WARUNG', 118, 128, 13, '#f2c14e', 'center');
+    ctx.strokeStyle = 'rgba(255,248,231,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(32, 134); ctx.lineTo(204, 134); ctx.stroke();
+    MENU_TODAY.forEach((id, i) => {
+      const recipe = RECIPES.find((r) => r.id === id);
+      const y = 147 + i * 13;
+      text(recipe.name.replace(' Kilat', '').replace(' Pedas', ''), 32, y, 11, '#fff8e7');
+      text(recipe.price, 204, y, 11, '#f2c14e', 'right');
+    });
+    const slotW = 336;
+    const slotX0 = 234;
     for (let i = 0; i < 3; i++) {
       const x = slotX0 + i * (slotW + 12);
       const y = 108;
@@ -739,6 +1244,8 @@ export function createRenderer(canvas) {
         ctx.stroke();
       }
       text(order.recipe.name, x + 12, y + 22, 16, C.ink);
+      // Who ordered it, top-right of the ticket.
+      text(CUSTOMERS[(order.customer ?? 0) % CUSTOMERS.length].name, x + slotW - 12, y + 20, 11, C.muted, 'right');
       order.recipe.items.forEach((ing, j) => {
         drawFood(ing, x + 28 + j * 34, y + 50, 30, 'ready');
       });
@@ -748,7 +1255,7 @@ export function createRenderer(canvas) {
       ctx.fill();
       ctx.fillStyle = urgent ? C.red : frac < 0.6 ? '#e8a13a' : C.green;
       if (frac > 0) { roundRect(x + 128, y + 44, 140 * frac, 12, 6); ctx.fill(); }
-      text(`${Math.ceil(order.patience)} dtk`, x + 276, y + 55, 13, C.ink);
+      text(`${Math.ceil(order.patience)} dtk`, x + 324, y + 55, 13, C.ink, 'right');
       // Points line: baseline 12 px above the card's bottom edge, so the
       // whole line (descenders included) stays inside the card.
       text(`+${order.recipe.items.length * 40 + order.recipe.tip} poin`, x + 12, y + 80, 11, C.muted);
@@ -856,6 +1363,21 @@ export function createRenderer(canvas) {
     }
   }
 
+  /** Customers who stormed off: small, angry, walking along the sidewalk. */
+  function drawLeaving(game) {
+    for (const l of game.leaving) {
+      const c = CUSTOMERS[(l.customer ?? 0) % CUSTOMERS.length];
+      const alpha = Math.max(0, 1 - l.t / l.life);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      // A little storm puff over their head while they go.
+      ctx.fillStyle = 'rgba(90,90,90,0.85)';
+      ctx.beginPath(); ctx.arc(l.x - 8, 640, 9, 0, Math.PI * 2); ctx.arc(l.x + 4, 636, 11, 0, Math.PI * 2); ctx.arc(l.x + 14, 641, 8, 0, Math.PI * 2); ctx.fill();
+      drawCustomer(c, l.x, 668, 2, 0.45);
+      ctx.restore();
+    }
+  }
+
   /** Paint one frame of the game. */
   function draw(game) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -871,6 +1393,7 @@ export function createRenderer(canvas) {
     drawTrash(game);
     drawHighlight(game);
     drawPlayer(game);
+    drawLeaving(game);
     drawParticles(game);
     drawFloats(game);
     drawOrderBoard(game);

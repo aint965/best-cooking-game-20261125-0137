@@ -99,6 +99,11 @@ export class SoundFX {
     setTimeout(() => this.blip(880, 0.18, 'triangle', 0.12, 1174), 120);
     setTimeout(() => this.blip(1318, 0.25, 'triangle', 0.1), 240);
   }
+  /** Coins dropping into the money box: two bright clinks. */
+  coin() {
+    this.blip(1568, 0.08, 'triangle', 0.1);
+    setTimeout(() => this.blip(2093, 0.12, 'triangle', 0.09), 90);
+  }
   error() { this.blip(220, 0.18, 'sawtooth', 0.1, 140); }
   burn() { this.noise(0.4, 300, 0.25, 'lowpass'); this.blip(160, 0.3, 'sawtooth', 0.08, 90); }
   tick() { this.blip(980, 0.05, 'square', 0.05); }

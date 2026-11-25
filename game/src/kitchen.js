@@ -108,7 +108,9 @@ export function movePlayer(player, dx, dy, dt, obstacles) {
       }
     }
     player.x = Math.max(24 + PLAYER_RADIUS, Math.min(1256 - PLAYER_RADIUS, player.x));
-    player.y = Math.max(186 + PLAYER_RADIUS, Math.min(696 - PLAYER_RADIUS, player.y));
+    // The cook stays inside the warung: the street band below y 640 is
+    // for seated customers and passing traffic, not for walking.
+    player.y = Math.max(186 + PLAYER_RADIUS, Math.min(624 - PLAYER_RADIUS, player.y));
   };
   step('x', dx);
   step('y', dy);

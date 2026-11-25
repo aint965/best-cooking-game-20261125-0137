@@ -87,10 +87,13 @@ function freshGame(rng) {
     plates: [{ items: [] }, { items: [] }],
     burners: [{ item: null, t: 0 }, { item: null, t: 0 }],
     board: { item: null, taps: 0 },
-    player: { x: 640, y: 660, target: null, pending: null, facing: 1 },
+    player: { x: 640, y: 600, target: null, pending: null, facing: 1 },
     hand: null,
     floats: [],
     particles: [],
+    coins: 0, // coins paid into the money box on the serving counter
+    coinAnims: [], // coins arcing from a paying customer to the money box
+    leaving: [], // customers storming off down the street, angry
     toast: null,
     nearestStation: null,
     overStats: null,
@@ -99,6 +102,10 @@ function freshGame(rng) {
 }
 
 const game = freshGame(mulberry32(seed));
+// A read handle for play-test drivers: the live game state (score, coins,
+// customers leaving, orders). The object itself is never replaced —
+// startGame() clears and refills it — so this handle stays valid.
+window.__game = game;
 
 // ------------------------------------------------------------ helpers
 
@@ -234,7 +241,10 @@ function applyInteractResult(result, station) {
     case 'serve': {
       const order = findOrderForPlate(game.orders, result.items);
       if (order) {
-        game.orders.splice(game.orders.indexOf(order), 1);
+        // The paying customer is the one who placed this order: coins fly
+        // from their spot at the window into the money box.
+        const servedIdx = game.orders.indexOf(order);
+        game.orders.splice(servedIdx, 1);
         const gap = game.elapsed - game.lastServeAt;
         game.combo = gap <= COMBO_WINDOW ? Math.min(5, game.combo + 1) : 1;
         game.bestCombo = Math.max(game.bestCombo, game.combo);
@@ -242,6 +252,15 @@ function applyInteractResult(result, station) {
         const points = scoreForServe(order, game.combo);
         game.score += points;
         game.served += 1;
+        game.coins += order.recipe.items.length;
+        for (let i = 0; i < order.recipe.items.length; i++) {
+          game.coinAnims.push({
+            x0: 972 + Math.max(0, servedIdx) * 106, y0: 384,
+            x1: 1237, y1: 400,
+            t: -i * 0.09, dur: 0.7,
+          });
+        }
+        sfx.coin();
         sfx.serve();
         addFloat(1150, 250, `+${points}`, '#f2c14e', 30);
         if (game.combo > 1) addFloat(1150, 288, `KOMBO x${game.combo}!`, '#d9382b', 22);
@@ -338,10 +357,30 @@ function update(dt) {
   }
   const expired = tickOrders(game.orders, dt);
   for (const order of expired) {
+    // The customer storms off down the street, angry.
+    game.leaving.push({
+      customer: order.customer ?? 0,
+      x: 1078,
+      dir: Math.random() < 0.5 ? -1 : 1,
+      t: 0,
+      life: 2.4,
+    });
     game.failed += 1;
     addFloat(640, 232, `${order.recipe.name} hangus!`, '#d9382b', 20);
     loseLife(`Pesanan ${order.recipe.name} keburu dingin!`);
     if (game.screen !== SCREEN_PLAY) break;
+  }
+
+  // Coins fly into the money box; angry customers walk off and fade.
+  for (let i = game.coinAnims.length - 1; i >= 0; i--) {
+    game.coinAnims[i].t += dt;
+    if (game.coinAnims[i].t > game.coinAnims[i].dur) game.coinAnims.splice(i, 1);
+  }
+  for (let i = game.leaving.length - 1; i >= 0; i--) {
+    const l = game.leaving[i];
+    l.t += dt;
+    l.x += l.dir * 70 * dt;
+    if (l.t > l.life) game.leaving.splice(i, 1);
   }
 
   // Combo fades when the cook idles too long.
@@ -469,6 +508,7 @@ function stageShot(name) {
     g.burners = [{ item: { ing: 'nasi', prep: 'raw' }, t: 2.5 }, { item: { ing: 'telur', prep: 'raw' }, t: 4.2 }];
     g.board = { item: { ing: 'cabai', prep: 'raw' }, taps: 2 };
     g.hand = { kind: 'item', ing: 'cabai', prep: 'ready' };
+    g.coins = 9;
     g.player = { x: 390, y: 500, target: null, pending: null, facing: 1 };
     g.floats = [{ x: 1150, y: 250, text: '+180', color: '#f2c14e', size: 30, life: 1.2 }];
     g.nearestStation = g.stations.find((s) => s.id === 'board');
@@ -505,6 +545,9 @@ function stageShot(name) {
     g.burners = [{ item: { ing: 'ayam', prep: 'raw' }, t: 3.4 }, { item: { ing: 'mie', prep: 'raw' }, t: 1.2 }];
     g.board = { item: null, taps: 0 };
     g.hand = { kind: 'item', ing: 'ayam', prep: 'ready' };
+    g.coins = 18;
+    // One customer already stormed off, angry, down the street.
+    g.leaving = [{ customer: 2, x: 900, dir: -1, t: 0.6, life: 2.4 }];
     g.player = { x: 620, y: 500, target: null, pending: null, facing: 1 };
     g.floats = [{ x: 640, y: 240, text: 'SERVICE RUSH!', color: '#d9382b', size: 28, life: 1.2 }];
     g.nearestStation = g.stations.find((s) => s.id === 'plate-0');
