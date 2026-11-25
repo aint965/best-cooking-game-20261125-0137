@@ -20,9 +20,9 @@ export function spawnGapForRound(round) {
   return Math.max(9, 17 - round);
 }
 
-export function makeOrder(round, rng) {
+export function makeOrder(round, rng, patienceMult = 1) {
   const recipe = RECIPES[Math.floor(rng() * RECIPES.length)];
-  const patience = patienceForRound(round);
+  const patience = patienceForRound(round) * patienceMult;
   return {
     id: nextOrderId++,
     recipe,

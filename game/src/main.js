@@ -5,12 +5,22 @@
 // a screenshot; ?selftest=1 plays a full dish through real input events and
 // writes its report into the page.
 
-import { RECIPES, INGREDIENTS } from './recipes.js';
+import { RECIPES, INGREDIENTS, FRY_TIME, BURN_AFTER, setFryTime } from './recipes.js';
 import { MAX_ACTIVE_ORDERS, makeOrder, tickOrders, findOrderForPlate, scoreForServe, spawnGapForRound } from './orders.js';
 import { SoundFX } from './audio.js';
 import { Input } from './input.js';
-import { buildStations, buildObstacles, stationAtPoint, nearestUsableStation, movePlayer, interact, burnerState, PLAYER_SPEED } from './kitchen.js';
-import { createRenderer, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER, MUTE_BUTTON } from './render.js';
+import { buildStations, buildObstacles, stationAtPoint, nearestUsableStation, movePlayer, interact, burnerState, setChopTaps, PLAYER_SPEED } from './kitchen.js';
+import { createRenderer, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER, MUTE_BUTTON } from './render.js';
+import {
+  loadMeta, saveMeta, addCoins, buyUpgrade, buyBoost, shiftSetup,
+  claimDaily, claimMission, selectTheme, checkAchievements, recordServe,
+  UPGRADES, SHOP_ITEMS, MISSIONS, THEMES,
+} from './meta.js';
+import {
+  SCREEN_MENU, SCREEN_SHOP, SCREEN_MISSIONS, SCREEN_RESTAURANTS,
+  SCREEN_UPGRADES, SCREEN_ACHIEVEMENTS, SCREEN_DAILY, SCREEN_SETTINGS,
+  MENU_BUTTONS, BACK_BUTTON, DAILY_CLAIM_BUTTON, menuButtonAt, subRowAt, subRows, inRect, isMenuScreen,
+} from './menu.js';
 
 const SHIFT_LENGTH = 150; // seconds per shift
 const COMBO_WINDOW = 15; // seconds between serves to keep the combo alive
@@ -45,6 +55,11 @@ const status = document.getElementById('status');
 const renderer = createRenderer(canvas);
 const sfx = new SoundFX();
 
+// Meta-progress shared across shifts (coins, upgrades, settings, themes).
+const meta = loadMeta();
+sfx.setMusicEnabled(meta.settings.music);
+sfx.setSfxEnabled(meta.settings.sfx);
+
 function readBest() {
   try {
     return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
@@ -64,10 +79,11 @@ function saveBest(value) {
 function freshGame(rng) {
   const stations = buildStations();
   return {
-    screen: SCREEN_TITLE,
+    screen: SCREEN_MENU,
     rng,
     stations,
     obstacles: buildObstacles(stations),
+    meta,
     now: 0,
     elapsed: 0,
     timeLeft: SHIFT_LENGTH,
@@ -81,6 +97,10 @@ function freshGame(rng) {
     failed: 0,
     best: readBest(),
     muted: false,
+    patienceMult: 1,
+    doubleCoins: false,
+    servedThisShift: 0,
+    servedByRecipe: {},
     orders: [],
     spawnIn: 2,
     customerIndex: 0,
@@ -140,6 +160,16 @@ function loseLife(reason) {
 
 function endGame(livesOut) {
   game.screen = SCREEN_OVER;
+  // Coins earned this shift go into the wallet (doubled by the promo boost).
+  const coinsEarned = game.doubleCoins ? game.coins * 2 : game.coins;
+  if (coinsEarned > 0) addCoins(meta, coinsEarned);
+  // Lifetime stats feed the achievements; a clean shift is a perfect one.
+  meta.stats.totalServed += game.served;
+  meta.stats.bestCombo = Math.max(meta.stats.bestCombo, game.bestCombo);
+  meta.stats.best = Math.max(meta.stats.best, game.score);
+  if (!livesOut && game.failed === 0 && game.served > 0) meta.stats.perfectShifts += 1;
+  const newlyUnlocked = checkAchievements(meta, meta.stats);
+  saveMeta(meta);
   game.overStats = {
     score: game.score,
     served: game.served,
@@ -147,6 +177,8 @@ function endGame(livesOut) {
     failed: game.failed,
     best: Math.max(game.best, game.score),
     livesOut,
+    coinsEarned,
+    unlocked: newlyUnlocked,
   };
   if (game.score > game.best) {
     game.best = game.score;
@@ -165,10 +197,25 @@ function startGame() {
   fresh.best = game.best;
   Object.keys(game).forEach((k) => delete game[k]);
   Object.assign(game, fresh);
+  // Upgrades and one-shift boosts shape this shift for real.
+  const setup = shiftSetup(meta);
+  game.lives = setup.lives;
+  game.patienceMult = setup.patienceMult;
+  game.doubleCoins = setup.doubleCoins;
+  setChopTaps(setup.chopTaps);
+  setFryTime(setup.fryTime);
   sfx.ensure();
   sfx.start();
   sfx.startMusic(); // Music starts here, on the player's own gesture — never on load.
   announce('Masak! Ambil bahan pertama dari rak.');
+}
+
+/** Back to the home screen (keeps the wallet, settings and unlocks). */
+function goToMenu() {
+  game.screen = SCREEN_MENU;
+  sfx.stopSizzle();
+  sfx.stopMusic();
+  announce('Menu utama Dapur Kilat.');
 }
 
 // ------------------------------------------------------------ interactions
@@ -252,6 +299,15 @@ function applyInteractResult(result, station) {
         const points = scoreForServe(order, game.combo);
         game.score += points;
         game.served += 1;
+        game.servedThisShift += 1;
+        game.servedByRecipe[order.recipe.id] = (game.servedByRecipe[order.recipe.id] || 0) + 1;
+        // Missions and achievements track the real serve, live.
+        meta.stats.totalServed += 1;
+        meta.stats.bestCombo = Math.max(meta.stats.bestCombo, game.bestCombo);
+        const unlocked = checkAchievements(meta, { ...meta.stats, best: Math.max(meta.stats.best, game.score) });
+        if (unlocked.length > 0) toast(`Prestasi terbuka: ${unlocked.length} baru!`);
+        recordServe(meta, order.recipe.id, game.combo, game.servedThisShift);
+        saveMeta(meta);
         game.coins += order.recipe.items.length;
         for (let i = 0; i < order.recipe.items.length; i++) {
           game.coinAnims.push({
@@ -335,11 +391,11 @@ function update(dt) {
     anyFrying = true;
     const before = burner.t;
     burner.t += dt;
-    if (before < 4 && burner.t >= 4) {
+    if (before < FRY_TIME && burner.t >= FRY_TIME) {
       sfx.ding();
       addFloat(690, 260, 'MATANG!', '#f2c14e', 18);
     }
-    if (before < 9 && burner.t >= 9) {
+    if (before < BURN_AFTER && burner.t >= BURN_AFTER) {
       sfx.burn();
       addFloat(690, 260, 'GOSONG!', '#d9382b', 20);
       burst(690, 320, '#888888', 10);
@@ -351,7 +407,7 @@ function update(dt) {
   // New orders arrive; old ones expire.
   game.spawnIn -= dt;
   if (game.spawnIn <= 0 && game.orders.length < MAX_ACTIVE_ORDERS) {
-    game.orders.push(makeOrder(game.round, game.rng));
+    game.orders.push(makeOrder(game.round, game.rng, game.patienceMult || 1));
     game.spawnIn = spawnGapForRound(game.round) * (0.85 + game.rng() * 0.3);
     sfx.click();
   }
@@ -417,7 +473,8 @@ input.onKey = (code) => {
     game.muted = sfx.toggleMute();
     return;
   }
-  if (game.screen === SCREEN_TITLE && (code === 'Enter' || code === 'Space')) startGame();
+  if (game.screen === SCREEN_MENU && (code === 'Enter' || code === 'Space')) startGame();
+  else if (isMenuScreen(game.screen) && game.screen !== SCREEN_MENU && code === 'Escape') goToMenu();
   else if (game.screen === SCREEN_OVER && (code === 'KeyR' || code === 'Enter' || code === 'Space')) startGame();
   else if (game.screen === SCREEN_PLAY && (code === 'KeyP' || code === 'Escape')) {
     game.screen = SCREEN_PAUSED;
@@ -430,14 +487,111 @@ input.onKey = (code) => {
 input.onInteract = () => {
   if (game.screen === SCREEN_PLAY) useNearestStation();
 };
+
+/** One click on a sub-screen row: toggle, buy, claim or select — for real. */
+function handleSubRow(screen, row) {
+  if (screen === SCREEN_SETTINGS) {
+    if (row.id === 'music') {
+      meta.settings.music = !meta.settings.music;
+      sfx.setMusicEnabled(meta.settings.music);
+      if (meta.settings.music && game.screen === SCREEN_PLAY) sfx.startMusic();
+    } else {
+      meta.settings.sfx = !meta.settings.sfx;
+      sfx.setSfxEnabled(meta.settings.sfx);
+    }
+    saveMeta(meta);
+    sfx.click();
+    return;
+  }
+  if (screen === SCREEN_SHOP) {
+    const item = SHOP_ITEMS[Number(row.id.split('-')[1])];
+    const res = buyBoost(meta, item.id);
+    if (res.ok) {
+      sfx.coin();
+      toast(`${item.name} dibeli — berlaku di shift berikutnya!`);
+    } else {
+      sfx.error();
+      toast('Koin tidak cukup — masak dulu untuk mendapat koin!');
+    }
+    return;
+  }
+  if (screen === SCREEN_UPGRADES) {
+    const up = UPGRADES[Number(row.id.split('-')[1])];
+    if (meta.upgrades[up.id]) return;
+    const res = buyUpgrade(meta, up.id);
+    if (res.ok) {
+      sfx.coin();
+      toast(`${up.name} dibeli — berlaku mulai shift berikutnya!`);
+    } else {
+      sfx.error();
+      toast('Koin tidak cukup — masak dulu untuk mendapat koin!');
+    }
+    return;
+  }
+  if (screen === SCREEN_MISSIONS) {
+    const mission = MISSIONS[Number(row.id.split('-')[1])];
+    const res = claimMission(meta, mission.id);
+    if (res.ok) {
+      sfx.coin();
+      toast(`Misi selesai! +${res.coins} koin.`);
+    } else if (res.reason === 'claimed') {
+      toast('Hadiah misi ini sudah diklaim.');
+    } else {
+      sfx.error();
+      toast('Misi belum selesai — lanjut masak!');
+    }
+    return;
+  }
+  if (screen === SCREEN_RESTAURANTS) {
+    const theme = THEMES[Number(row.id.split('-')[1])];
+    const res = selectTheme(meta, theme.id);
+    if (res.ok) {
+      sfx.coin();
+      toast(`Warung ${theme.name} aktif!`);
+    } else {
+      sfx.error();
+      toast('Koin tidak cukup — masak dulu untuk mendapat koin!');
+    }
+    return;
+  }
+}
+
 input.onClick = (x, y) => {
   // The on-screen music button answers before anything else, on any screen.
   if (x >= MUTE_BUTTON.x && x < MUTE_BUTTON.x + MUTE_BUTTON.w && y >= MUTE_BUTTON.y && y < MUTE_BUTTON.y + MUTE_BUTTON.h) {
     game.muted = sfx.toggleMute();
     return;
   }
-  if (game.screen === SCREEN_TITLE || game.screen === SCREEN_OVER) {
-    startGame();
+  if (game.screen === SCREEN_MENU) {
+    const button = menuButtonAt(x, y);
+    if (!button) return;
+    sfx.click();
+    if (button.id === 'play') startGame();
+    else game.screen = button.screen;
+    return;
+  }
+  if (isMenuScreen(game.screen)) {
+    if (inRect(BACK_BUTTON, x, y)) {
+      sfx.click();
+      goToMenu();
+      return;
+    }
+    if (game.screen === SCREEN_DAILY && inRect(DAILY_CLAIM_BUTTON, x, y)) {
+      const res = claimDaily(meta);
+      if (res.ok) {
+        sfx.coin();
+        toast(`Hadiah harian +${res.coins} koin! Beruntun ${res.streak} hari.`);
+      } else {
+        toast('Sudah diklaim hari ini — kembali besok!');
+      }
+      return;
+    }
+    const row = subRowAt(game.screen, meta, x, y);
+    if (row) handleSubRow(game.screen, row);
+    return;
+  }
+  if (game.screen === SCREEN_OVER) {
+    goToMenu();
     return;
   }
   if (game.screen !== SCREEN_PLAY) return;
@@ -491,27 +645,12 @@ function stageShot(name) {
   g.elapsed = 0;
   g.best = 4280;
   if (name === 'cover') {
-    g.timeLeft = 151;
-    g.round = 2;
-    g.score = 1240;
-    g.combo = 3;
-    g.lives = 3;
-    g.orders = [
-      orderForShot('nasi-goreng', 38),
-      orderForShot('mie-ayam', 24),
-      orderForShot('ayam-geprek', 12),
-    ];
-    g.orders[0].maxPatience = 52;
-    g.orders[1].maxPatience = 49;
-    g.orders[2].maxPatience = 46;
-    g.plates = [{ items: ['nasi', 'telur'] }, { items: ['mie', 'ayam', 'sayur'] }];
-    g.burners = [{ item: { ing: 'nasi', prep: 'raw' }, t: 2.5 }, { item: { ing: 'telur', prep: 'raw' }, t: 4.2 }];
-    g.board = { item: { ing: 'cabai', prep: 'raw' }, taps: 2 };
-    g.hand = { kind: 'item', ing: 'cabai', prep: 'ready' };
-    g.coins = 9;
+    // The cover is the new illustrated home screen: logo warung, wallet,
+    // best score and the eight menu buttons (display coins, not saved).
+    g.screen = SCREEN_MENU;
+    g.meta.coins = 250;
     g.player = { x: 390, y: 500, target: null, pending: null, facing: 1 };
-    g.floats = [{ x: 1150, y: 250, text: '+180', color: '#f2c14e', size: 30, life: 1.2 }];
-    g.nearestStation = g.stations.find((s) => s.id === 'board');
+    g.nearestStation = null;
   } else if (name === 'play') {
     g.timeLeft = 125;
     g.round = 1;
@@ -559,7 +698,7 @@ function stageShot(name) {
   }
   // A different face at the window in every shot: the window shows the
   // customer of the first open order (or customerIndex when there is none).
-  const shotCustomers = { cover: [1, 2, 0], play: [2, 0], rush: [0, 3, 1] };
+  const shotCustomers = { play: [2, 0], rush: [0, 3, 1] };
   if (shotCustomers[name]) {
     g.orders.forEach((o, i) => { o.customer = shotCustomers[name][i % shotCustomers[name].length]; });
   }
@@ -617,10 +756,73 @@ async function runSelftest() {
   const report = { steps: [], errors: window.__errors, passed: false };
   const log = (s) => report.steps.push(s);
   try {
-    // Start from the title screen with a real key press.
-    key('Enter');
-    await waitFor(() => game.screen === SCREEN_PLAY, 5000, 'game starts');
-    log('started');
+    // --- Menu checks: every button opens a real screen, and back returns.
+    if (game.screen !== SCREEN_MENU) throw new Error(`expected menu screen, got ${game.screen}`);
+    log('menu screen shown');
+    const menuOpened = [];
+    async function openMenuScreen(buttonId, expectedScreen) {
+      const b = MENU_BUTTONS.find((x) => x.id === buttonId);
+      clickAt(b.x + b.w / 2, b.y + b.h / 2);
+      await waitFor(() => game.screen === expectedScreen, 5000, `open ${buttonId}`);
+      menuOpened.push(buttonId);
+      clickAt(BACK_BUTTON.x + BACK_BUTTON.w / 2, BACK_BUTTON.y + BACK_BUTTON.h / 2);
+      await waitFor(() => game.screen === SCREEN_MENU, 5000, `back from ${buttonId}`);
+    }
+    await openMenuScreen('shop', SCREEN_SHOP);
+    await openMenuScreen('missions', SCREEN_MISSIONS);
+    await openMenuScreen('restaurants', SCREEN_RESTAURANTS);
+    await openMenuScreen('upgrades', SCREEN_UPGRADES);
+    await openMenuScreen('achievements', SCREEN_ACHIEVEMENTS);
+    await openMenuScreen('daily', SCREEN_DAILY);
+    await openMenuScreen('settings', SCREEN_SETTINGS);
+    log(`menu screens opened: ${menuOpened.join(', ')}`);
+    report.menuScreens = menuOpened;
+
+    // Settings: toggle music off and back on through real clicks.
+    const settingsBtn = MENU_BUTTONS.find((x) => x.id === 'settings');
+    clickAt(settingsBtn.x + settingsBtn.w / 2, settingsBtn.y + settingsBtn.h / 2);
+    await waitFor(() => game.screen === SCREEN_SETTINGS, 5000, 'open settings');
+    const musicRow = subRows(SCREEN_SETTINGS, meta).find((r) => r.id === 'music');
+    clickAt(musicRow.rect.x + musicRow.rect.w / 2, musicRow.rect.y + musicRow.rect.h / 2);
+    await sleep(100);
+    if (meta.settings.music !== false) throw new Error('music toggle did not turn music off');
+    clickAt(musicRow.rect.x + musicRow.rect.w / 2, musicRow.rect.y + musicRow.rect.h / 2);
+    await sleep(100);
+    if (meta.settings.music !== true) throw new Error('music toggle did not turn music back on');
+    log('settings toggle works (music off/on)');
+    clickAt(BACK_BUTTON.x + BACK_BUTTON.w / 2, BACK_BUTTON.y + BACK_BUTTON.h / 2);
+    await waitFor(() => game.screen === SCREEN_MENU, 5000, 'back from settings');
+
+    // Daily reward: claim it through the real button.
+    const dailyBtn = MENU_BUTTONS.find((x) => x.id === 'daily');
+    clickAt(dailyBtn.x + dailyBtn.w / 2, dailyBtn.y + dailyBtn.h / 2);
+    await waitFor(() => game.screen === SCREEN_DAILY, 5000, 'open daily');
+    const coinsBeforeDaily = meta.coins;
+    clickAt(DAILY_CLAIM_BUTTON.x + DAILY_CLAIM_BUTTON.w / 2, DAILY_CLAIM_BUTTON.y + DAILY_CLAIM_BUTTON.h / 2);
+    await sleep(100);
+    if (meta.coins <= coinsBeforeDaily) throw new Error('daily claim did not grant coins');
+    log(`daily reward claimed: +${meta.coins - coinsBeforeDaily} coins, streak ${meta.daily.streak}`);
+    clickAt(BACK_BUTTON.x + BACK_BUTTON.w / 2, BACK_BUTTON.y + BACK_BUTTON.h / 2);
+    await waitFor(() => game.screen === SCREEN_MENU, 5000, 'back from daily');
+
+    // Upgrades: grant test coins, buy Pisau Tajam through the real row.
+    addCoins(meta, 500);
+    const upgradesBtn = MENU_BUTTONS.find((x) => x.id === 'upgrades');
+    clickAt(upgradesBtn.x + upgradesBtn.w / 2, upgradesBtn.y + upgradesBtn.h / 2);
+    await waitFor(() => game.screen === SCREEN_UPGRADES, 5000, 'open upgrades');
+    const knifeRow = subRows(SCREEN_UPGRADES, meta).find((r) => r.id === 'upgrade-0');
+    clickAt(knifeRow.rect.x + knifeRow.rect.w / 2, knifeRow.rect.y + knifeRow.rect.h / 2);
+    await sleep(100);
+    if (!meta.upgrades.knife) throw new Error('buying Pisau Tajam did not stick');
+    log('upgrade bought: Pisau Tajam (test coins 500)');
+    clickAt(BACK_BUTTON.x + BACK_BUTTON.w / 2, BACK_BUTTON.y + BACK_BUTTON.h / 2);
+    await waitFor(() => game.screen === SCREEN_MENU, 5000, 'back from upgrades');
+
+    // Start the game through the PLAY button, with a real click.
+    const playBtn = MENU_BUTTONS.find((x) => x.id === 'play');
+    clickAt(playBtn.x + playBtn.w / 2, playBtn.y + playBtn.h / 2);
+    await waitFor(() => game.screen === SCREEN_PLAY, 5000, 'game starts via PLAY');
+    log('started via PLAY');
     // Music starts with the game (on the player's own gesture) and the
     // mute toggle answers from the keyboard and the on-screen button.
     report.music = { timer: !!sfx.musicTimer, ctxState: sfx.ctx ? sfx.ctx.state : 'none' };
@@ -793,7 +995,7 @@ function runGame() {
   setInterval(() => {
     if (performance.now() - lastFrameAt > 100) stepFrame(performance.now());
   }, 50);
-  announce('Dapur Kilat. Tekan Enter atau klik untuk mulai.');
+  announce('Dapur Kilat. Klik MAIN untuk mulai memasak.');
   requestAnimationFrame(frame);
 }
 
@@ -804,6 +1006,9 @@ if (shotName) {
   renderer.draw(game);
   renderer.draw(game);
   window.__shotReady = true;
+  // Repaint on a timer: a late window resize clears the canvas bitmap,
+  // and a staged shot runs no animation loop to repaint it.
+  setInterval(() => renderer.draw(game), 500);
 } else if (selftest) {
   runGame();
   runSelftest();

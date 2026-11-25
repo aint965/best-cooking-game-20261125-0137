@@ -6,11 +6,24 @@
 
 import { INGREDIENTS, RECIPES, FRY_TIME, BURN_AFTER } from './recipes.js';
 import { burnerState } from './kitchen.js';
+import {
+  ACHIEVEMENTS, MISSIONS, SHOP_ITEMS, UPGRADES, THEMES, themeById,
+  dailyAvailable, DAILY_REWARD,
+} from './meta.js';
+import {
+  SCREEN_MENU, SCREEN_SHOP, SCREEN_MISSIONS, SCREEN_RESTAURANTS,
+  SCREEN_UPGRADES, SCREEN_ACHIEVEMENTS, SCREEN_DAILY, SCREEN_SETTINGS,
+  MENU_BUTTONS, BACK_BUTTON, DAILY_CLAIM_BUTTON, SUB_PANEL, SUB_TITLE_Y, subRows,
+} from './menu.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
 export const SCREEN_PAUSED = 'paused';
 export const SCREEN_OVER = 'over';
+export {
+  SCREEN_MENU, SCREEN_SHOP, SCREEN_MISSIONS, SCREEN_RESTAURANTS,
+  SCREEN_UPGRADES, SCREEN_ACHIEVEMENTS, SCREEN_DAILY, SCREEN_SETTINGS,
+};
 
 const W = 1280;
 const H = 720;
@@ -102,6 +115,32 @@ export function createRenderer(canvas) {
   function ellipse(x, y, rx, ry) {
     ctx.beginPath();
     ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  }
+
+  /** The warung theme the player picked (Warung Klasik by default). */
+  function themeOf(game) {
+    return themeById(game.meta ? game.meta.theme : 'klasik');
+  }
+
+  /** A soft drop shadow under a panel: a blurred dark rounded rect. */
+  function softShadow(x, y, w, h, r, alpha = 0.18) {
+    ctx.save();
+    ctx.shadowColor = `rgba(30,16,8,${alpha})`;
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 5;
+    ctx.fillStyle = '#000';
+    roundRect(x, y, w, h, r);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** A vertical gradient fill for a rect. */
+  function vGrad(x, y, w, h, top, bottom) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bottom);
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
   }
 
   // ------------------------------------------------------------ food icons
@@ -417,15 +456,23 @@ export function createRenderer(canvas) {
     ctx.beginPath(); ctx.arc(861, 82, 8, Math.PI * 0.2, Math.PI * 1.1); ctx.stroke();
   }
 
-  function drawFloor() {
-    ctx.fillStyle = C.wall;
+  function drawFloor(game) {
+    const theme = themeOf(game);
+    ctx.fillStyle = theme.wall;
+    ctx.fillRect(0, 168, W, 472);
+    // Warm light falling from the window side: a soft radial glow over the
+    // middle of the kitchen, so the room has depth instead of flat colour.
+    const glow = ctx.createRadialGradient(760, 380, 60, 760, 380, 620);
+    glow.addColorStop(0, 'rgba(255,236,180,0.20)');
+    glow.addColorStop(1, 'rgba(255,236,180,0)');
+    ctx.fillStyle = glow;
     ctx.fillRect(0, 168, W, 472);
     drawWall();
-    // Terracotta tiles in close warm tones, so the floor reads as worn
+    // Tiles in the theme's close warm tones, so the floor reads as worn
     // kitchen tile instead of a flat checkerboard: the shades stay within
     // one family, with only the odd sage or cream accent tile.
     const tile = 58;
-    const shades = ['#c06a44', '#c4744e', '#ba6440', '#c97a54'];
+    const shades = theme.floor;
     for (let ty = 0; ty < 8; ty++) {
       for (let tx = 0; tx < 23; tx++) {
         const h = tileHash(tx, ty);
@@ -456,10 +503,10 @@ export function createRenderer(canvas) {
     drawMat(560, 436, 260, 42, '#4a5d3a', '#33402a');
     drawMat(380, 600, 340, 32, '#3f6b5e', '#2c4d43');
     drawMat(1000, 496, 156, 48, '#8a4a30', '#6b3822');
-    // Wall band above the floor.
-    ctx.fillStyle = C.wallTrim;
+    // Wall band above the floor, in the theme's trim colour.
+    ctx.fillStyle = theme.wallTrim;
     ctx.fillRect(0, 168, W, 8);
-    drawStreet();
+    drawStreet(theme);
   }
 
   /** A round woven rug: concentric rings in terracotta and cream. */
@@ -484,11 +531,11 @@ export function createRenderer(canvas) {
    * two regulars sit eating at small tables, and the road with a parked
    * motorbike, a cat, and a dashed centre line. The cook never walks here.
    */
-  function drawStreet() {
+  function drawStreet(theme) {
     // Striped awning edge across the warung's front, in the two stretches
     // not covered by a counter (the stations draw over any overlap).
-    drawAwning(24, 360);
-    drawAwning(760, 496);
+    drawAwning(24, 360, theme);
+    drawAwning(760, 496, theme);
     // Sidewalk.
     ctx.fillStyle = '#d8cbb2';
     ctx.fillRect(0, 646, W, 40);
@@ -524,10 +571,12 @@ export function createRenderer(canvas) {
     drawLamp(1100, 646);
   }
 
-  /** One striped awning segment: red and cream vertical stripes. */
-  function drawAwning(x, w) {
+  /** One striped awning segment: the theme's two colours, vertical stripes. */
+  function drawAwning(x, w, theme) {
+    const a = theme ? theme.awningA : '#b03a2e';
+    const b = theme ? theme.awningB : '#f3e3c2';
     for (let i = 0; i < w / 16; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#b03a2e' : '#f3e3c2';
+      ctx.fillStyle = i % 2 === 0 ? a : b;
       ctx.fillRect(x + i * 16, 636, 16, 12);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
@@ -708,6 +757,18 @@ export function createRenderer(canvas) {
         ctx.fill();
         drawFood(b.item.ing, cx, cy - 2, 36, state === 'done' || state === 'burnt' ? 'fried' : 'ready');
         if (state === 'cooking') {
+          // Licking flames under the pan, flickering with the clock.
+          for (let f = 0; f < 5; f++) {
+            const fx = cx - 24 + f * 12;
+            const fh = 12 + 6 * Math.sin(game.now * 9 + f * 1.7);
+            ctx.fillStyle = f % 2 === 0 ? '#e8823a' : '#f2c14e';
+            ctx.beginPath();
+            ctx.moveTo(fx - 6, cy + 22);
+            ctx.quadraticCurveTo(fx - 3, cy + 22 - fh, fx, cy + 14 - fh * 0.4);
+            ctx.quadraticCurveTo(fx + 3, cy + 22 - fh, fx + 6, cy + 22);
+            ctx.closePath();
+            ctx.fill();
+          }
           const frac = Math.min(1, b.t / FRY_TIME);
           ctx.fillStyle = 'rgba(0,0,0,0.35)';
           ctx.fillRect(cx - 30, cy + 26, 60, 6);
@@ -727,6 +788,12 @@ export function createRenderer(canvas) {
           ctx.fillStyle = C.gold;
           text('SIAP!', cx, cy - 42, 14, C.gold, 'center');
         } else if (state === 'burnt') {
+          // Smoke curling off the burnt pan, and a dull ember glow.
+          ctx.fillStyle = 'rgba(60,60,60,0.5)';
+          for (let s = 0; s < 3; s++) {
+            const sx = cx - 10 + s * 10 + Math.sin(game.now * 2 + s) * 3;
+            ctx.beginPath(); ctx.arc(sx, cy - 34 - s * 8, 5 + s, 0, Math.PI * 2); ctx.fill();
+          }
           ctx.fillStyle = '#111';
           ctx.beginPath(); ctx.arc(cx, cy - 30, 5, 0, Math.PI * 2); ctx.fill();
           text('GOSONG!', cx, cy - 42, 13, '#222', 'center');
@@ -970,7 +1037,9 @@ export function createRenderer(canvas) {
     queue.forEach((q, i) => {
       const spot = customerSpot(i);
       const mood = q.frac > 0.6 ? 0 : q.frac > 0.3 ? 1 : 2;
-      drawCustomer(CUSTOMERS[q.customer % CUSTOMERS.length], spot.x, spot.y, mood, 0.85);
+      // Big and expressive at the window: a full head and shoulders, so a
+      // smile, a worried brow or an angry flush reads at a glance.
+      drawCustomer(CUSTOMERS[q.customer % CUSTOMERS.length], spot.x, spot.y + 6, mood, 1.02);
     });
     // A "BUKA" (open) sign hanging at the window's top-right corner.
     ctx.fillStyle = '#3d8a3d';
@@ -1123,6 +1192,14 @@ export function createRenderer(canvas) {
     for (const f of game.floats) {
       const alpha = Math.max(0, Math.min(1, f.life / 0.5));
       ctx.globalAlpha = alpha;
+      // A dark outline keeps a shout (SERVICE RUSH!, +180) readable over
+      // the busy tile floor instead of sinking into it.
+      ctx.font = `bold ${f.size}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(30,18,10,0.85)';
+      ctx.strokeText(f.text, f.x, f.y);
       text(f.text, f.x, f.y, f.size, f.color, 'center');
       ctx.globalAlpha = 1;
     }
@@ -1145,15 +1222,30 @@ export function createRenderer(canvas) {
   }
 
   function drawHud(game) {
-    // Top bar.
-    ctx.fillStyle = C.woodDark;
+    // Top bar: a warm gradient with a soft shadow, carrying four rounded
+    // pills — logo + lives, the shift timer, the coin wallet, score+combo.
+    const barGrad = ctx.createLinearGradient(0, 0, 0, 64);
+    barGrad.addColorStop(0, '#6b4423');
+    barGrad.addColorStop(1, '#4a2e18');
+    ctx.fillStyle = barGrad;
     ctx.fillRect(0, 0, W, 64);
-    ctx.fillStyle = C.wood;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(0, 60, W, 4);
-    text('DAPUR KILAT', 24, 42, 28, '#fff8e7');
-    // Lives as hearts.
-    for (let i = 0; i < 3; i++) {
-      const hx = 250 + i * 34;
+    const pill = (x, y, w, h, fill) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      roundRect(x + 1, y + 2, w, h, h / 2);
+      ctx.fill();
+      ctx.fillStyle = fill;
+      roundRect(x, y, w, h, h / 2);
+      ctx.fill();
+    };
+    // Logo pill, left.
+    pill(14, 10, 196, 44, '#fff8e7');
+    text('DAPUR KILAT', 112, 40, 24, '#b03a2e', 'center');
+    // Lives as hearts, right after the logo.
+    const maxLives = Math.max(3, game.lives);
+    for (let i = 0; i < maxLives; i++) {
+      const hx = 232 + i * 32;
       const hy = 32;
       ctx.fillStyle = i < game.lives ? C.red : 'rgba(255,255,255,0.25)';
       ctx.beginPath();
@@ -1162,21 +1254,31 @@ export function createRenderer(canvas) {
       ctx.bezierCurveTo(hx + 6, hy - 12, hx + 12, hy - 4, hx, hy + 8);
       ctx.fill();
     }
-    // Shift timer, big in the middle; it turns red and pulses under 30 s.
+    // Shift timer pill, big in the middle; red and pulsing under 30 s.
     const urgent = game.timeLeft <= 30;
     const pulse = urgent ? 0.7 + 0.3 * Math.sin(game.now * 6) : 1;
+    pill(W / 2 - 92, 8, 184, 48, urgent ? '#8a2f26' : '#3f6b5e');
     ctx.globalAlpha = pulse;
-    text(fmtTime(game.timeLeft), W / 2, 44, 32, urgent ? '#ff6b5e' : '#fff8e7', 'center');
+    text(fmtTime(game.timeLeft), W / 2, 41, 30, '#fff8e7', 'center');
     ctx.globalAlpha = 1;
-    text(`RONDE ${game.round}`, W / 2, 60, 12, '#e8d9b0', 'center');
-    // Score and combo, right.
-    text(`SKOR ${game.score}`, W - 24, 34, 24, '#fff8e7', 'right');
+    text(`RONDE ${game.round}`, W / 2 - 92, 41, 12, '#e8d9b0', 'right');
+    text('SHIFT', W / 2 + 92, 41, 12, '#e8d9b0');
+    // Coin wallet pill: coins earned this shift.
+    pill(880, 10, 130, 44, '#7a5a1e');
+    ctx.fillStyle = '#f2c14e';
+    ctx.beginPath(); ctx.arc(906, 32, 11, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8a6a1e';
+    text('Rp', 906, 36, 11, '#8a6a1e', 'center');
+    text(`${game.coins || 0}`, 924, 40, 20, '#fff8e7');
+    // Score pill, right; combo replaces the best score while it is alive.
+    pill(1022, 10, 158, 44, '#2c4636');
+    text(`SKOR ${game.score}`, 1101, 32, 20, '#fff8e7', 'center');
     if (game.combo > 1) {
-      text(`KOMBO x${game.combo}`, W - 24, 58, 16, C.gold, 'right');
+      text(`KOMBO x${game.combo}`, 1101, 50, 14, C.gold, 'center');
     } else {
-      text(`TERBAIK ${game.best}`, W - 24, 58, 14, '#c9b183', 'right');
+      text(`TERBAIK ${game.best}`, 1101, 50, 12, '#c9b183', 'center');
     }
-    if (game.muted) text('SUARA MATI (M)', W - 24, 12, 11, '#c9b183', 'right');
+    if (game.muted) text('SUARA MATI (M)', 1180, 12, 11, '#c9b183', 'right');
     drawMuteButton(game);
   }
 
@@ -1198,6 +1300,7 @@ export function createRenderer(canvas) {
     // to its right. Every line of a ticket (dish name, customer, ingredient
     // icons, patience bar, seconds, points) sits inside its card with
     // clear padding.
+    softShadow(12, 100, W - 24, 106, 10, 0.22);
     ctx.fillStyle = C.wood;
     roundRect(12, 100, W - 24, 106, 10);
     ctx.fill();
@@ -1234,31 +1337,40 @@ export function createRenderer(canvas) {
       }
       const frac = Math.max(0, order.patience / order.maxPatience);
       const urgent = frac < 0.35;
+      // Ticket card with a soft shadow and a warm cream face.
+      softShadow(x, y, slotW, 92, 10, 0.22);
       ctx.fillStyle = C.paper;
-      roundRect(x, y, slotW, 92, 8);
+      roundRect(x, y, slotW, 92, 10);
       ctx.fill();
       if (urgent) {
         ctx.strokeStyle = `rgba(217,56,43,${0.5 + 0.5 * Math.sin(game.now * 6)})`;
         ctx.lineWidth = 3;
-        roundRect(x, y, slotW, 92, 8);
+        roundRect(x, y, slotW, 92, 10);
         ctx.stroke();
       }
-      text(order.recipe.name, x + 12, y + 22, 16, C.ink);
+      // Illustrated dish in a golden ring, left — the ticket's picture.
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath(); ctx.arc(x + 34, y + 34, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fdfdf8';
+      ctx.beginPath(); ctx.arc(x + 34, y + 34, 22, 0, Math.PI * 2); ctx.fill();
+      drawPlatedDish(order.recipe.items, x + 34, y + 34, 40, game.now, false);
+      text(order.recipe.name, x + 68, y + 22, 16, C.ink);
       // Who ordered it, top-right of the ticket.
       text(CUSTOMERS[(order.customer ?? 0) % CUSTOMERS.length].name, x + slotW - 12, y + 20, 11, C.muted, 'right');
       order.recipe.items.forEach((ing, j) => {
-        drawFood(ing, x + 28 + j * 34, y + 50, 30, 'ready');
+        drawFood(ing, x + 84 + j * 30, y + 50, 26, 'ready');
       });
       // Patience bar, right of the icons, with the seconds beside it.
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      roundRect(x + 128, y + 44, 140, 12, 6);
+      roundRect(x + 178, y + 44, 96, 12, 6);
       ctx.fill();
       ctx.fillStyle = urgent ? C.red : frac < 0.6 ? '#e8a13a' : C.green;
-      if (frac > 0) { roundRect(x + 128, y + 44, 140 * frac, 12, 6); ctx.fill(); }
+      if (frac > 0) { roundRect(x + 178, y + 44, 96 * frac, 12, 6); ctx.fill(); }
       text(`${Math.ceil(order.patience)} dtk`, x + 324, y + 55, 13, C.ink, 'right');
       // Points line: baseline 12 px above the card's bottom edge, so the
       // whole line (descenders included) stays inside the card.
-      text(`+${order.recipe.items.length * 40 + order.recipe.tip} poin`, x + 12, y + 80, 11, C.muted);
+      text(`+${order.recipe.items.length * 40 + order.recipe.tip} poin`, x + 68, y + 80, 11, C.muted);
+      if (urgent) text('CEPAT!', x + slotW - 12, y + 80, 11, C.red, 'right');
     }
   }
 
@@ -1283,19 +1395,421 @@ export function createRenderer(canvas) {
     text(prompt, W / 2, y + h - 28, 18, C.red, 'center');
   }
 
-  function drawTitle(game) {
-    drawPanel(
-      'DAPUR KILAT',
-      [
-        'Masak cepat, sajikan panas!',
-        'Ambil bahan → cincang / goreng → tata di piring → antar ke jendela.',
-        'WASD / panah untuk jalan, E atau klik untuk memakai alat.',
-        'Shift 2½ menit — 3 nyawa. Sajikan cepat untuk kombo!',
-        `Skor terbaik: ${game.best}`,
-      ],
-      'Tekan Enter atau klik untuk mulai',
-      C.red,
-    );
+  // ------------------------------------------------------------ main menu
+
+  /** The illustrated warung home scene behind the menu and sub-screens. */
+  function drawMenuScene(game) {
+    const theme = themeOf(game);
+    vGrad(0, 0, W, 520, theme.skyTop, theme.skyBot);
+    // Sun (or moon for the night warung) and drifting clouds.
+    if (theme.id === 'malam') {
+      ctx.fillStyle = '#fdf6d8';
+      ctx.beginPath(); ctx.arc(1060, 90, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = theme.skyTop;
+      ctx.beginPath(); ctx.arc(1046, 82, 30, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff8e7';
+      for (let i = 0; i < 24; i++) {
+        const sx = (i * 173) % 1280;
+        const sy = 30 + ((i * 67) % 140);
+        ctx.beginPath(); ctx.arc(sx, sy, 2, 0, Math.PI * 2); ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = '#fff3c4';
+      ctx.beginPath(); ctx.arc(1060, 90, 44, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath(); ctx.arc(1060, 90, 34, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (const [cx, cy, s] of [[220, 80, 1], [520, 130, 0.7], [820, 60, 0.85]]) {
+      ellipse(cx, cy, 52 * s, 18 * s);
+      ctx.fill();
+      ellipse(cx + 30 * s, cy + 6 * s, 40 * s, 14 * s);
+      ctx.fill();
+    }
+    // Distant rooftops, so the warung sits in a street, not in a void.
+    ctx.fillStyle = 'rgba(90,50,30,0.35)';
+    for (let i = 0; i < 6; i++) {
+      const rx = 40 + i * 220;
+      ctx.fillRect(rx, 300, 140, 60);
+      ctx.beginPath(); ctx.moveTo(rx - 10, 300); ctx.lineTo(rx + 70, 262); ctx.lineTo(rx + 150, 300); ctx.closePath(); ctx.fill();
+    }
+    // The street the warung stands on.
+    ctx.fillStyle = '#8a7a68';
+    ctx.fillRect(0, 440, W, 280);
+    ctx.fillStyle = '#6e5f4e';
+    ctx.fillRect(0, 440, W, 6);
+    ctx.fillStyle = '#f2c14e';
+    for (let x = 30; x < W; x += 90) ctx.fillRect(x, 690, 46, 5);
+    // The warung building: warm walls, a striped awning, a glowing window.
+    const bx = 300;
+    const by = 150;
+    const bw = 680;
+    const bh = 300;
+    softShadow(bx, by, bw, bh, 18, 0.3);
+    ctx.fillStyle = theme.building;
+    roundRect(bx, by, bw, bh, 18);
+    ctx.fill();
+    // Awning stripes across the front.
+    for (let i = 0; i < bw / 28; i++) {
+      ctx.fillStyle = i % 2 === 0 ? theme.awningA : theme.awningB;
+      ctx.fillRect(bx + i * 28, by, 28, 34);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(bx, by + 34, bw, 4);
+    // The signboard: the game's logo.
+    softShadow(430, 196, 420, 76, 14, 0.3);
+    ctx.fillStyle = theme.sign;
+    roundRect(430, 196, 420, 76, 14);
+    ctx.fill();
+    ctx.strokeStyle = '#f2c14e';
+    ctx.lineWidth = 3;
+    roundRect(438, 204, 404, 60, 10);
+    ctx.stroke();
+    text('DAPUR KILAT', 640, 240, 44, '#fff8e7', 'center');
+    text('WARUNG MASAK KILAT • SEJAK 2026', 640, 262, 12, '#f2c14e', 'center');
+    // The serving window: the chef inside, customers outside, steam up.
+    ctx.fillStyle = '#2f2118';
+    roundRect(360, 292, 560, 130, 12);
+    ctx.fill();
+    const winGlow = ctx.createLinearGradient(0, 292, 0, 422);
+    winGlow.addColorStop(0, '#7a5a34');
+    winGlow.addColorStop(1, '#4a3520');
+    ctx.fillStyle = winGlow;
+    roundRect(368, 300, 544, 114, 10);
+    ctx.fill();
+    // The chef at the pass, waving a spatula, with two happy regulars.
+    drawCustomer(CUSTOMERS[0], 480, 372, 0, 0.95);
+    drawCustomer(CUSTOMERS[1], 640, 372, 0, 0.95);
+    drawCustomer(CUSTOMERS[5], 800, 372, 0, 0.95);
+    drawSteam(560, 320, game.now, 1);
+    drawSteam(720, 320, game.now, 1);
+    // Dishes on the counter below the window.
+    drawPlatedDish(['nasi', 'ayam', 'cabai'], 480, 436, 52, game.now, true);
+    drawPlatedDish(['mie', 'telur', 'sayur'], 640, 436, 52, game.now, true);
+    drawPlatedDish(['nasi', 'telur', 'sayur'], 800, 436, 52, game.now, true);
+    // String lights across the front.
+    ctx.strokeStyle = '#3a2a1a';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(300, 150); ctx.quadraticCurveTo(640, 190, 980, 150); ctx.stroke();
+    for (let i = 0; i <= 8; i++) {
+      const lx = 300 + i * 85;
+      const ly = 150 + Math.sin((i / 8) * Math.PI) * 22;
+      ctx.fillStyle = ['#f2c14e', '#d9382b', '#4da34d', '#7ab8e0'][i % 4];
+      ctx.beginPath(); ctx.arc(lx, ly + 8, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    // A parked motorbike and a cat, for street life.
+    drawMotorbike(150, 712);
+    ctx.fillStyle = '#4a4a4a';
+    ellipse(1120, 712, 12, 7);
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(1128, 702, 7, 0, Math.PI * 2); ctx.fill();
+  }
+
+  /** The wallet pill: the player's coin balance, top-right of the menu. */
+  function drawWalletPill(game, x, y) {
+    const coins = game.meta ? game.meta.coins : 0;
+    // Solid dark, so the gold stays readable over a light sky or paper.
+    ctx.fillStyle = '#3a2a1a';
+    roundRect(x, y, 210, 46, 23);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(242,193,78,0.6)';
+    ctx.lineWidth = 2;
+    roundRect(x, y, 210, 46, 23);
+    ctx.stroke();
+    ctx.fillStyle = '#f2c14e';
+    ctx.beginPath(); ctx.arc(x + 26, y + 23, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8a6a1e';
+    text('Rp', x + 26, y + 27, 12, '#8a6a1e', 'center');
+    text(`${coins} koin`, x + 48, y + 30, 20, '#fff8e7');
+  }
+
+  function drawMenu(game) {
+    drawMenuScene(game);
+    // Best score, top-left: solid dark, so gold reads over the light sky.
+    ctx.fillStyle = '#3a2a1a';
+    roundRect(24, 20, 260, 46, 23);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(242,193,78,0.6)';
+    ctx.lineWidth = 2;
+    roundRect(24, 20, 260, 46, 23);
+    ctx.stroke();
+    text('★ SKOR TERBAIK', 40, 37, 13, '#f2c14e');
+    text(`${game.best}`, 40, 58, 13, '#fff8e7');
+    drawWalletPill(game, 820, 20);
+    // The eight buttons: PLAY stands out in red, the rest are cream cards.
+    for (const b of MENU_BUTTONS) {
+      const isPlay = b.id === 'play';
+      softShadow(b.x, b.y, b.w, b.h, 16, 0.25);
+      if (isPlay) {
+        const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+        g.addColorStop(0, '#e0493a');
+        g.addColorStop(1, '#b03a2e');
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = '#fff8e7';
+      }
+      roundRect(b.x, b.y, b.w, b.h, 16);
+      ctx.fill();
+      if (!isPlay) {
+        ctx.strokeStyle = '#e0c79a';
+        ctx.lineWidth = 2;
+        roundRect(b.x, b.y, b.w, b.h, 16);
+        ctx.stroke();
+      }
+      // Icon disc, with the button's icon drawn on it.
+      ctx.fillStyle = isPlay ? '#fff8e7' : '#b03a2e';
+      ctx.beginPath(); ctx.arc(b.x + 34, b.y + b.h / 2, 22, 0, Math.PI * 2); ctx.fill();
+      drawMenuIconOnDisc(b.icon, b.x + 34, b.y + b.h / 2, 22, isPlay ? '#b03a2e' : '#fff8e7');
+      text(b.label, b.x + 66, b.y + 30, 20, isPlay ? '#fff8e7' : C.ink);
+      text(b.sub, b.x + 66, b.y + 52, 12, isPlay ? '#ffd9d0' : C.muted);
+      if (b.id === 'daily' && game.meta && dailyAvailable(game.meta)) {
+        ctx.fillStyle = '#d9382b';
+        ctx.beginPath(); ctx.arc(b.x + b.w - 14, b.y + 14, 11, 0, Math.PI * 2); ctx.fill();
+        text('!', b.x + b.w - 14, b.y + 18, 14, '#fff8e7', 'center');
+      }
+    }
+    // Footer hint on its own dark pill, so it reads over the road dashes.
+    ctx.fillStyle = '#3a2a1a';
+    roundRect(W / 2 - 320, 668, 640, 30, 15);
+    ctx.fill();
+    text('Klik MAIN untuk mulai • WASD + E untuk memasak • P jeda • M suara', W / 2, 688, 14, '#fff8e7', 'center');
+    drawMuteButton(game);
+  }
+
+  /** The same icon shapes, but in one given colour (for the menu discs). */
+  function drawMenuIconOnDisc(kind, x, y, r, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (kind === 'play') {
+      ctx.beginPath(); ctx.moveTo(x - r * 0.4, y - r * 0.55); ctx.lineTo(x + r * 0.55, y); ctx.lineTo(x - r * 0.4, y + r * 0.55); ctx.closePath(); ctx.fill();
+    } else if (kind === 'shop') {
+      roundRect(x - r * 0.55, y - r * 0.2, r * 1.1, r * 0.75, 3); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y - r * 0.1, r * 0.35, Math.PI, 0); ctx.stroke();
+    } else if (kind === 'missions') {
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath(); ctx.moveTo(x - r * 0.55, y + i * r * 0.5); ctx.lineTo(x - r * 0.2, y + i * r * 0.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + r * 0.05, y + i * r * 0.5 - 2); ctx.lineTo(x + r * 0.2, y + i * r * 0.5 + 3); ctx.lineTo(x + r * 0.55, y + i * r * 0.5 - 4); ctx.stroke();
+      }
+    } else if (kind === 'restaurants') {
+      ctx.beginPath(); ctx.moveTo(x - r * 0.6, y); ctx.lineTo(x, y - r * 0.6); ctx.lineTo(x + r * 0.6, y); ctx.closePath(); ctx.fill();
+      ctx.fillRect(x - r * 0.45, y, r * 0.9, r * 0.55);
+    } else if (kind === 'upgrades') {
+      ctx.beginPath(); ctx.moveTo(x, y - r * 0.6); ctx.lineTo(x + r * 0.5, y - r * 0.05); ctx.lineTo(x + r * 0.18, y - r * 0.05); ctx.lineTo(x + r * 0.18, y + r * 0.55); ctx.lineTo(x - r * 0.18, y + r * 0.55); ctx.lineTo(x - r * 0.18, y - r * 0.05); ctx.lineTo(x - r * 0.5, y - r * 0.05); ctx.closePath(); ctx.fill();
+    } else if (kind === 'achievements') {
+      ctx.beginPath(); ctx.moveTo(x - r * 0.45, y - r * 0.55); ctx.lineTo(x + r * 0.45, y - r * 0.55); ctx.lineTo(x + r * 0.3, y + r * 0.1); ctx.lineTo(x - r * 0.3, y + r * 0.1); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(x - r * 0.45, y - r * 0.3, r * 0.2, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + r * 0.45, y - r * 0.3, r * 0.2, Math.PI * 1.5, Math.PI * 0.5); ctx.stroke();
+      ctx.fillRect(x - r * 0.08, y + r * 0.1, r * 0.16, r * 0.3);
+      ctx.fillRect(x - r * 0.3, y + r * 0.4, r * 0.6, r * 0.12);
+    } else if (kind === 'daily') {
+      ctx.fillRect(x - r * 0.55, y - r * 0.15, r * 1.1, r * 0.65);
+      ctx.fillRect(x - r * 0.65, y - r * 0.45, r * 1.3, r * 0.3);
+      ctx.fillRect(x - r * 0.08, y - r * 0.45, r * 0.16, r * 1.1);
+      ctx.beginPath(); ctx.arc(x - r * 0.2, y - r * 0.55, r * 0.18, 0, Math.PI * 2); ctx.arc(x + r * 0.2, y - r * 0.55, r * 0.18, 0, Math.PI * 2); ctx.fill();
+    } else if (kind === 'settings') {
+      ctx.beginPath(); ctx.arc(x, y, r * 0.32, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * r * 0.42, y + Math.sin(a) * r * 0.42);
+        ctx.lineTo(x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  const SUB_TITLES = {
+    [SCREEN_SHOP]: 'TOKO',
+    [SCREEN_MISSIONS]: 'MISI',
+    [SCREEN_RESTAURANTS]: 'WARUNG',
+    [SCREEN_UPGRADES]: 'UPGRADE',
+    [SCREEN_ACHIEVEMENTS]: 'PRESTASI',
+    [SCREEN_DAILY]: 'HADIAH HARIAN',
+    [SCREEN_SETTINGS]: 'PENGATURAN',
+  };
+
+  /** One sub-screen: the warung scene dimmed behind a paper panel. */
+  function drawSubScreen(game, screen) {
+    drawMenuScene(game);
+    ctx.fillStyle = 'rgba(30,18,10,0.45)';
+    ctx.fillRect(0, 0, W, H);
+    const p = SUB_PANEL;
+    softShadow(p.x, p.y, p.w, p.h, 18, 0.35);
+    ctx.fillStyle = C.paper;
+    roundRect(p.x, p.y, p.w, p.h, 18);
+    ctx.fill();
+    ctx.strokeStyle = '#e0c79a';
+    ctx.lineWidth = 3;
+    roundRect(p.x, p.y, p.w, p.h, 18);
+    ctx.stroke();
+    text(SUB_TITLES[screen] || '', W / 2, SUB_TITLE_Y, 32, C.ink, 'center');
+    drawWalletPill(game, p.x + p.w - 234, p.y + 14);
+    // Back button, top-left of the screen.
+    softShadow(BACK_BUTTON.x, BACK_BUTTON.y, BACK_BUTTON.w, BACK_BUTTON.h, 10, 0.25);
+    ctx.fillStyle = '#fff8e7';
+    roundRect(BACK_BUTTON.x, BACK_BUTTON.y, BACK_BUTTON.w, BACK_BUTTON.h, 10);
+    ctx.fill();
+    text('← KEMBALI', BACK_BUTTON.x + BACK_BUTTON.w / 2, BACK_BUTTON.y + 28, 16, C.ink, 'center');
+    if (screen === SCREEN_DAILY) drawDailyContent(game);
+    else drawSubRows(game, screen);
+    drawMuteButton(game);
+  }
+
+  /** A small action button on the right end of a row. */
+  function drawRowButton(rect, label, enabled, gold) {
+    ctx.fillStyle = enabled ? (gold ? '#f2c14e' : '#3d8a3d') : 'rgba(0,0,0,0.18)';
+    roundRect(rect.x, rect.y, rect.w, rect.h, 10);
+    ctx.fill();
+    text(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 6, 15, enabled ? (gold ? '#3a2a1a' : '#fff8e7') : '#fff8e7', 'center');
+  }
+
+  function drawSubRows(game, screen) {
+    const meta = game.meta;
+    const rows = subRows(screen, meta);
+    for (const row of rows) {
+      const r = row.rect;
+      const small = r.h <= 52;
+      ctx.fillStyle = '#f7ecd0';
+      roundRect(r.x, r.y, r.w, r.h, 12);
+      ctx.fill();
+      ctx.strokeStyle = '#e0c79a';
+      ctx.lineWidth = 1.5;
+      roundRect(r.x, r.y, r.w, r.h, 12);
+      ctx.stroke();
+      const btn = { x: r.x + r.w - 128, y: r.y + (r.h - 40) / 2, w: 112, h: 40 };
+      if (screen === SCREEN_SETTINGS) {
+        const on = row.id === 'music' ? meta.settings.music : meta.settings.sfx;
+        text(row.id === 'music' ? 'Musik latar' : 'Efek suara', r.x + 20, r.y + (small ? 20 : 30), 18, C.ink);
+        text(row.id === 'music' ? 'Lagu ceria selama shift' : 'Bunyi cincang, goreng & koin', r.x + 20, r.y + (small ? 36 : 52), 12, C.muted);
+        // Toggle pill: green ON, grey OFF, with a sliding knob.
+        ctx.fillStyle = on ? '#3d8a3d' : 'rgba(0,0,0,0.25)';
+        roundRect(btn.x, btn.y, btn.w, btn.h, 20);
+        ctx.fill();
+        ctx.fillStyle = '#fff8e7';
+        ctx.beginPath(); ctx.arc(on ? btn.x + btn.w - 24 : btn.x + 24, btn.y + 20, 14, 0, Math.PI * 2); ctx.fill();
+        text(on ? 'HIDUP' : 'MATI', on ? btn.x + 34 : btn.x + btn.w - 34, btn.y + 25, 13, '#fff8e7', 'center');
+      } else if (screen === SCREEN_SHOP) {
+        const item = SHOP_ITEMS[Number(row.id.split('-')[1])];
+        text(item.name, r.x + 20, r.y + 30, 18, C.ink);
+        text(item.desc, r.x + 20, r.y + 52, 12, C.muted);
+        text(`${item.cost} koin`, btn.x - 14, r.y + r.h / 2 + 6, 16, '#8a6a1e', 'right');
+        drawRowButton(btn, 'BELI', meta.coins >= item.cost, false);
+      } else if (screen === SCREEN_UPGRADES) {
+        const up = UPGRADES[Number(row.id.split('-')[1])];
+        const owned = !!meta.upgrades[up.id];
+        text(up.name, r.x + 20, r.y + 30, 18, owned ? '#3d8a3d' : C.ink);
+        text(up.desc, r.x + 20, r.y + 52, 12, C.muted);
+        if (owned) {
+          text('DIMILIKI ✓', btn.x + btn.w / 2, r.y + r.h / 2 + 6, 15, '#3d8a3d', 'center');
+        } else {
+          text(`${up.cost} koin`, btn.x - 14, r.y + r.h / 2 + 6, 16, '#8a6a1e', 'right');
+          drawRowButton(btn, 'BELI', meta.coins >= up.cost, false);
+        }
+      } else if (screen === SCREEN_ACHIEVEMENTS) {
+        const a = ACHIEVEMENTS[Number(row.id.split('-')[1])];
+        const unlocked = !!meta.achievements[a.id];
+        ctx.fillStyle = unlocked ? '#f2c14e' : 'rgba(0,0,0,0.15)';
+        ctx.beginPath(); ctx.arc(r.x + 28, r.y + r.h / 2, 17, 0, Math.PI * 2); ctx.fill();
+        text(a.icon, r.x + 28, r.y + r.h / 2 + 5, 13, unlocked ? '#3a2a1a' : '#fff8e7', 'center');
+        text(a.name, r.x + 56, r.y + 21, 15, unlocked ? C.ink : C.muted);
+        text(a.desc, r.x + 56, r.y + 38, 11, C.muted);
+        text(unlocked ? 'TERBUKA ✓' : 'TERKUNCI', r.x + r.w - 20, r.y + r.h / 2 + 5, 13, unlocked ? '#3d8a3d' : C.muted, 'right');
+      } else if (screen === SCREEN_MISSIONS) {
+        const m = MISSIONS[Number(row.id.split('-')[1])];
+        const state = meta.missions[m.id] || { progress: 0, claimed: false };
+        const done = state.progress >= m.target;
+        text(m.name, r.x + 20, r.y + 28, 18, C.ink);
+        text(m.desc, r.x + 20, r.y + 50, 12, C.muted);
+        // Progress bar.
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        roundRect(r.x + 20, r.y + r.h - 16, 420, 8, 4);
+        ctx.fill();
+        ctx.fillStyle = done ? '#3d8a3d' : '#f2c14e';
+        if (state.progress > 0) { roundRect(r.x + 20, r.y + r.h - 16, 420 * (state.progress / m.target), 8, 4); ctx.fill(); }
+        text(`${state.progress}/${m.target}`, r.x + 452, r.y + r.h - 8, 12, C.ink);
+        if (state.claimed) text('SELESAI ✓', btn.x + btn.w / 2, r.y + r.h / 2 + 6, 15, '#3d8a3d', 'center');
+        else drawRowButton(btn, done ? `KLAIM +${m.reward}` : `+${m.reward} koin`, done, true);
+      } else if (screen === SCREEN_RESTAURANTS) {
+        const t = THEMES[Number(row.id.split('-')[1])];
+        const owned = !!meta.ownedThemes[t.id];
+        const active = meta.theme === t.id;
+        ctx.fillStyle = t.skyTop;
+        ctx.beginPath(); ctx.arc(r.x + 28, r.y + r.h / 2, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = t.awningA;
+        ctx.beginPath(); ctx.arc(r.x + 28, r.y + r.h / 2, 10, 0, Math.PI * 2); ctx.fill();
+        text(t.name, r.x + 56, r.y + 30, 18, active ? '#3d8a3d' : C.ink);
+        text(t.desc, r.x + 56, r.y + 52, 12, C.muted);
+        if (active) text('AKTIF ✓', btn.x + btn.w / 2, r.y + r.h / 2 + 6, 15, '#3d8a3d', 'center');
+        else if (owned) drawRowButton(btn, 'PILIH', true, false);
+        else {
+          text(`${t.cost} koin`, btn.x - 14, r.y + r.h / 2 + 6, 16, '#8a6a1e', 'right');
+          drawRowButton(btn, 'BELI', meta.coins >= t.cost, false);
+        }
+      }
+    }
+  }
+
+  /** The daily reward screen: a big gift, the streak, and the claim button. */
+  function drawDailyContent(game) {
+    const meta = game.meta;
+    const available = dailyAvailable(meta);
+    const p = SUB_PANEL;
+    // A big wrapped gift in the middle of the panel.
+    const gx = W / 2;
+    const gy = 300;
+    ctx.fillStyle = '#b03a2e';
+    roundRect(gx - 70, gy - 40, 140, 100, 10);
+    ctx.fill();
+    ctx.fillStyle = '#d9382b';
+    roundRect(gx - 80, gy - 64, 160, 34, 8);
+    ctx.fill();
+    ctx.fillStyle = '#f2c14e';
+    ctx.fillRect(gx - 10, gy - 64, 20, 124);
+    ctx.beginPath(); ctx.arc(gx - 22, gy - 74, 18, 0, Math.PI * 2); ctx.arc(gx + 22, gy - 74, 18, 0, Math.PI * 2); ctx.fill();
+    if (available) {
+      // Sparkles around the gift while it waits to be claimed.
+      ctx.fillStyle = '#f2c14e';
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + game.now * 0.8;
+        const sx = gx + Math.cos(a) * 110;
+        const sy = gy - 10 + Math.sin(a) * 70;
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(a);
+        ctx.fillRect(-2, -8, 4, 16);
+        ctx.fillRect(-8, -2, 16, 4);
+        ctx.restore();
+      }
+    }
+    text(`Beruntun: ${meta.daily.streak} hari`, W / 2, 400, 18, C.ink, 'center');
+    text(available ? `Klaim hari ini: +${DAILY_REWARD} koin (beruntun menambah bonus!)` : 'Sudah diklaim hari ini — kembali besok!', W / 2, 428, 15, C.muted, 'center');
+    const b = DAILY_CLAIM_BUTTON;
+    softShadow(b.x, b.y, b.w, b.h, 16, 0.25);
+    ctx.fillStyle = available ? '#3d8a3d' : 'rgba(0,0,0,0.18)';
+    roundRect(b.x, b.y, b.w, b.h, 16);
+    ctx.fill();
+    text(available ? `KLAIM +${DAILY_REWARD} KOIN` : 'SUDAH DIKLAIM', W / 2, b.y + 40, 20, '#fff8e7', 'center');
+    text('Koin dipakai di Toko, Upgrade, dan Warung.', W / 2, 566, 13, C.muted, 'center');
+  }
+
+  /** Confetti pieces for a shift that ended well. */
+  function drawConfetti(game) {
+    const colors = ['#f2c14e', '#d9382b', '#4da34d', '#7ab8e0', '#b03a6e'];
+    for (let i = 0; i < 70; i++) {
+      const x = (i * 97 + 40) % 1280;
+      const y = ((i * 47 + game.now * 70) % 760) - 20;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((i * 0.7 + game.now) % Math.PI);
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fillRect(-5, -3, 10, 6);
+      ctx.restore();
+    }
   }
 
   function drawPaused(game) {
@@ -1304,15 +1818,19 @@ export function createRenderer(canvas) {
 
   function drawOver(game) {
     const s = game.overStats;
+    // A shift that ended well gets a confetti celebration over the kitchen.
+    if (!s.livesOut && s.score > 0) drawConfetti(game);
+    const lines = [
+      `Skor akhir: ${s.score}`,
+      `Hidangan tersaji: ${s.served}  ·  Kombo terbaik: x${s.bestCombo}`,
+      `Pesanan gagal: ${s.failed}`,
+    ];
+    if (s.coinsEarned) lines.push(`Koin didapat: +${s.coinsEarned}  ·  Dompet: ${game.meta ? game.meta.coins : 0} koin`);
+    lines.push(s.score >= s.best && s.score > 0 ? 'Skor terbaik baru!' : `Skor terbaik: ${s.best}`);
     drawPanel(
       s.livesOut ? 'DAPUR TUTUP!' : 'SHIFT SELESAI!',
-      [
-        `Skor akhir: ${s.score}`,
-        `Hidangan tersaji: ${s.served}  ·  Kombo terbaik: x${s.bestCombo}`,
-        `Pesanan gagal: ${s.failed}`,
-        s.score >= s.best && s.score > 0 ? 'Skor terbaik baru!' : `Skor terbaik: ${s.best}`,
-      ],
-      'Tekan R atau klik untuk masak lagi',
+      lines,
+      'Klik untuk kembali ke menu  •  R untuk masak lagi',
       C.red,
     );
   }
@@ -1384,7 +1902,18 @@ export function createRenderer(canvas) {
     ctx.fillStyle = '#2b1d12';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
-    drawFloor();
+    // The menu family paints its own illustrated home scene, not the kitchen.
+    if (game.screen === SCREEN_MENU) {
+      drawMenu(game);
+      return;
+    }
+    if (game.screen === SCREEN_SHOP || game.screen === SCREEN_MISSIONS || game.screen === SCREEN_RESTAURANTS
+      || game.screen === SCREEN_UPGRADES || game.screen === SCREEN_ACHIEVEMENTS || game.screen === SCREEN_DAILY
+      || game.screen === SCREEN_SETTINGS) {
+      drawSubScreen(game, game.screen);
+      return;
+    }
+    drawFloor(game);
     drawCrates(game);
     drawBoard(game);
     drawStove(game);
@@ -1401,8 +1930,7 @@ export function createRenderer(canvas) {
     drawToast(game);
     // Station labels paint last, so no sprite ever covers one.
     drawStationLabels(game);
-    if (game.screen === SCREEN_TITLE) drawTitle(game);
-    else if (game.screen === SCREEN_PAUSED) drawPaused(game);
+    if (game.screen === SCREEN_PAUSED) drawPaused(game);
     else if (game.screen === SCREEN_OVER) drawOver(game);
   }
 

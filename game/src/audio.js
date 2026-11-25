@@ -7,6 +7,8 @@ export class SoundFX {
   constructor() {
     this.ctx = null;
     this.muted = false;
+    this.musicOn = true; // the Settings screen's music toggle
+    this.sfxOn = true; // the Settings screen's sound-effects toggle
     this.sizzleNodes = null;
     this.musicTimer = null;
     this.musicGain = null;
@@ -30,6 +32,17 @@ export class SoundFX {
     }
   }
 
+  /** Settings toggles: music off stops the loop, SFX off silences blips. */
+  setMusicEnabled(on) {
+    this.musicOn = !!on;
+    if (!this.musicOn) this.stopMusic();
+  }
+
+  setSfxEnabled(on) {
+    this.sfxOn = !!on;
+    if (!this.sfxOn) this.stopSizzle();
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     if (this.muted) this.stopSizzle();
@@ -45,7 +58,7 @@ export class SoundFX {
 
   /** A short oscillator blip: frequency, duration, wave, gain, slide-to. */
   blip(freq, dur, type = 'sine', gain = 0.12, slideTo = 0) {
-    if (this.muted || !this.ensure()) return;
+    if (this.muted || !this.sfxOn || !this.ensure()) return;
     try {
       const t = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
@@ -65,7 +78,7 @@ export class SoundFX {
 
   /** A burst of filtered noise, for chops, sizzles and thuds. */
   noise(dur, filterFreq, gain = 0.2, type = 'bandpass') {
-    if (this.muted || !this.ensure()) return;
+    if (this.muted || !this.sfxOn || !this.ensure()) return;
     try {
       const t = this.ctx.currentTime;
       const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
@@ -159,7 +172,7 @@ export class SoundFX {
   }
 
   startMusic() {
-    if (this.musicTimer || !this.ensure()) return;
+    if (this.musicTimer || !this.musicOn || !this.ensure()) return;
     try {
       this.musicGain = this.ctx.createGain();
       this.musicGain.gain.value = this.muted ? 0 : 1;

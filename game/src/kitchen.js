@@ -10,7 +10,12 @@ import { findOrderForPlate } from './orders.js';
 export const PLAYER_SPEED = 280; // px per second
 export const PLAYER_RADIUS = 18;
 export const INTERACT_RANGE = 130; // px from a station's approach point
-export const CHOP_TAPS = 3; // taps to finish chopping one ingredient
+export let CHOP_TAPS = 3; // taps to finish chopping one ingredient
+
+/** The Pisau Tajam upgrade chops in 2 taps; a plain shift restores 3. */
+export function setChopTaps(taps) {
+  CHOP_TAPS = taps;
+}
 
 /** A station: where it is drawn, where the cook stands to use it, what it is. */
 function station(id, kind, label, rect, approach, extra = {}) {

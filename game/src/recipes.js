@@ -3,8 +3,14 @@
 // dish on the order board. Recipes combine the same seven ingredients in
 // different ways, so the player has to plan which station each dish needs.
 
-export const FRY_TIME = 4.0; // seconds on a burner before an item is fried
-export const BURN_AFTER = 9.0; // seconds on a burner before an item burns
+export let FRY_TIME = 4.0; // seconds on a burner before an item is fried
+export let BURN_AFTER = 9.0; // seconds on a burner before an item burns
+
+/** The Kompor Turbo upgrade shortens the fry; a plain shift restores 4 s. */
+export function setFryTime(seconds) {
+  FRY_TIME = seconds;
+  BURN_AFTER = seconds + 5;
+}
 
 export const INGREDIENTS = {
   nasi: { id: 'nasi', name: 'Nasi', prep: 'fry', color: '#f7ecd0', dark: '#c9b183', blurb: 'goreng di wajan' },
