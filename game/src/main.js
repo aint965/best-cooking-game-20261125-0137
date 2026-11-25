@@ -470,8 +470,9 @@ function stageShot(name) {
     g.score = 320;
     g.combo = 1;
     g.lives = 3;
-    g.orders = [orderForShot('mie-goreng', 34)];
+    g.orders = [orderForShot('mie-goreng', 34), orderForShot('telur-balado', 26)];
     g.orders[0].maxPatience = 52;
+    g.orders[1].maxPatience = 49;
     g.plates = [{ items: ['mie'] }, { items: [] }];
     g.burners = [{ item: { ing: 'mie', prep: 'raw' }, t: 2.0 }, { item: null, t: 0 }];
     g.board = { item: { ing: 'sayur', prep: 'raw' }, taps: 2 };

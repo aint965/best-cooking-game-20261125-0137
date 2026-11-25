@@ -242,8 +242,10 @@ export function createRenderer(canvas) {
       }
       text(`CINCANG ${board.taps}/3`, r.x + r.w / 2, r.y + 19, 12, '#fff8e7', 'center');
     } else {
-      text('TALENAN', r.x + r.w / 2, r.y + 62, 16, '#8a6a45', 'center');
-      text('bawa cabai / sayur ke sini', r.x + r.w / 2, r.y + 84, 11, '#8a6a45', 'center');
+      // Empty-board hint in a dark brown, so it stays readable on the tan
+      // board instead of washing out.
+      text('TALENAN', r.x + r.w / 2, r.y + 62, 16, '#6b4a26', 'center');
+      text('bawa cabai / sayur ke sini', r.x + r.w / 2, r.y + 84, 11, '#6b4a26', 'center');
     }
     ctx.fillStyle = C.paper;
     roundRect(r.x + r.w / 2 - 52, r.y - 28, 104, 20, 10);
@@ -537,52 +539,57 @@ export function createRenderer(canvas) {
   }
 
   function drawOrderBoard(game) {
-    // The board itself.
+    // The board itself: tall enough that every line of a ticket (dish name,
+    // ingredient icons, patience bar, seconds, points) sits inside its card
+    // with clear padding — the points line used to ride the card's bottom
+    // edge and read as clipped.
     ctx.fillStyle = C.wood;
-    roundRect(12, 70, W - 24, 98, 10);
+    roundRect(12, 66, W - 24, 106, 10);
     ctx.fill();
     ctx.fillStyle = C.woodDark;
-    text('PAPAN', 32, 92, 14, '#e8d9b0');
-    text('PESANAN', 32, 110, 14, '#e8d9b0');
-    text('sajikan sebelum', 32, 134, 12, '#e8d9b0');
-    text('sabar habis!', 32, 150, 12, '#e8d9b0');
+    text('PAPAN', 32, 88, 14, '#e8d9b0');
+    text('PESANAN', 32, 106, 14, '#e8d9b0');
+    text('sajikan sebelum', 32, 130, 12, '#e8d9b0');
+    text('sabar habis!', 32, 146, 12, '#e8d9b0');
     const slotW = 330;
     const slotX0 = 200;
     for (let i = 0; i < 3; i++) {
       const x = slotX0 + i * (slotW + 12);
-      const y = 78;
+      const y = 74;
       const order = game.orders[i];
       if (!order) {
         ctx.strokeStyle = 'rgba(255,248,231,0.35)';
         ctx.lineWidth = 1.5;
-        roundRect(x, y, slotW, 82, 8);
+        roundRect(x, y, slotW, 92, 8);
         ctx.stroke();
-        text('menunggu pesanan', x + slotW / 2, y + 48, 14, 'rgba(255,248,231,0.5)', 'center');
+        text('menunggu pesanan', x + slotW / 2, y + 52, 14, 'rgba(255,248,231,0.5)', 'center');
         continue;
       }
       const frac = Math.max(0, order.patience / order.maxPatience);
       const urgent = frac < 0.35;
       ctx.fillStyle = C.paper;
-      roundRect(x, y, slotW, 82, 8);
+      roundRect(x, y, slotW, 92, 8);
       ctx.fill();
       if (urgent) {
         ctx.strokeStyle = `rgba(217,56,43,${0.5 + 0.5 * Math.sin(game.now * 6)})`;
         ctx.lineWidth = 3;
-        roundRect(x, y, slotW, 82, 8);
+        roundRect(x, y, slotW, 92, 8);
         ctx.stroke();
       }
-      text(order.recipe.name, x + 12, y + 21, 16, C.ink);
+      text(order.recipe.name, x + 12, y + 22, 16, C.ink);
       order.recipe.items.forEach((ing, j) => {
         drawFood(ing, x + 28 + j * 34, y + 50, 30, 'ready');
       });
       // Patience bar, right of the icons, with the seconds beside it.
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      roundRect(x + 128, y + 42, 140, 12, 6);
+      roundRect(x + 128, y + 44, 140, 12, 6);
       ctx.fill();
       ctx.fillStyle = urgent ? C.red : frac < 0.6 ? '#e8a13a' : C.green;
-      if (frac > 0) { roundRect(x + 128, y + 42, 140 * frac, 12, 6); ctx.fill(); }
-      text(`${Math.ceil(order.patience)} dtk`, x + 276, y + 53, 13, C.ink);
-      text(`+${order.recipe.items.length * 40 + order.recipe.tip} poin`, x + 12, y + 73, 11, C.muted);
+      if (frac > 0) { roundRect(x + 128, y + 44, 140 * frac, 12, 6); ctx.fill(); }
+      text(`${Math.ceil(order.patience)} dtk`, x + 276, y + 55, 13, C.ink);
+      // Points line: baseline 12 px above the card's bottom edge, so the
+      // whole line (descenders included) stays inside the card.
+      text(`+${order.recipe.items.length * 40 + order.recipe.tip} poin`, x + 12, y + 80, 11, C.muted);
     }
   }
 
