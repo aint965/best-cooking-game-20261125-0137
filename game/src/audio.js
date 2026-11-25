@@ -8,6 +8,10 @@ export class SoundFX {
     this.ctx = null;
     this.muted = false;
     this.sizzleNodes = null;
+    this.musicTimer = null;
+    this.musicGain = null;
+    this.musicStep = 0;
+    this.musicNextTime = 0;
   }
 
   /** Create the context on the first real gesture (browsers demand one). */
@@ -29,6 +33,13 @@ export class SoundFX {
   toggleMute() {
     this.muted = !this.muted;
     if (this.muted) this.stopSizzle();
+    if (this.musicGain) {
+      try {
+        this.musicGain.gain.setTargetAtTime(this.muted ? 0 : 1, this.ctx.currentTime, 0.02);
+      } catch {
+        // Music is garnish: never let it break the game.
+      }
+    }
     return this.muted;
   }
 
@@ -129,4 +140,91 @@ export class SoundFX {
     }
     this.sizzleNodes = null;
   }
+
+  // ------------------------------------------------------------ music
+  //
+  // A cheerful loop, synthesized in code: a bouncy C-major melody over a
+  // soft bass, scheduled a few notes ahead. No audio files, no network.
+  // It starts only when the game starts (a real gesture) and stops when
+  // the shift ends; M or the on-screen button mutes it with the SFX.
+
+  /** MIDI note number to frequency. */
+  static midiFreq(midi) {
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  startMusic() {
+    if (this.musicTimer || !this.ensure()) return;
+    try {
+      this.musicGain = this.ctx.createGain();
+      this.musicGain.gain.value = this.muted ? 0 : 1;
+      this.musicGain.connect(this.ctx.destination);
+      this.musicStep = 0;
+      this.musicNextTime = this.ctx.currentTime + 0.08;
+      this.musicTimer = setInterval(() => this._scheduleMusic(), 40);
+    } catch {
+      this.musicTimer = null;
+      this.musicGain = null;
+    }
+  }
+
+  stopMusic() {
+    if (this.musicTimer) {
+      clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+    if (this.musicGain) {
+      try {
+        this.musicGain.disconnect();
+      } catch {
+        // Already gone.
+      }
+      this.musicGain = null;
+    }
+  }
+
+  _scheduleMusic() {
+    if (!this.ctx || !this.musicTimer || !this.musicGain) return;
+    try {
+      while (this.musicNextTime < this.ctx.currentTime + 0.18) {
+        const t = this.musicNextTime;
+        const step = this.musicStep % MUSIC_MELODY.length;
+        const note = MUSIC_MELODY[step];
+        if (note > 0) this._musicNote(note, t, MUSIC_EIGHTH, 'triangle', 0.055);
+        if (step % 8 === 0) {
+          const bass = MUSIC_BASS[(step / 8) % MUSIC_BASS.length];
+          this._musicNote(bass, t, MUSIC_EIGHTH * 8, 'sine', 0.05);
+        }
+        this.musicNextTime += MUSIC_EIGHTH;
+        this.musicStep += 1;
+      }
+    } catch {
+      // Music is garnish: never let it break the game.
+    }
+  }
+
+  _musicNote(midi, when, dur, type, gain) {
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = SoundFX.midiFreq(midi);
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.linearRampToValueAtTime(gain, when + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    osc.connect(g).connect(this.musicGain);
+    osc.start(when);
+    osc.stop(when + dur + 0.02);
+  }
 }
+
+// One eighth note at 132 BPM, in seconds.
+const MUSIC_EIGHTH = 60 / 132 / 2;
+// The melody, one MIDI note per eighth note (0 = rest), four bars of eight.
+const MUSIC_MELODY = [
+  76, 79, 81, 79, 76, 72, 74, 76,
+  77, 81, 79, 77, 76, 76, 0, 74,
+  76, 79, 81, 84, 81, 79, 76, 74,
+  76, 76, 79, 77, 72, 72, 0, 67,
+];
+// One bass note per bar: C, F, G, C.
+const MUSIC_BASS = [48, 53, 55, 48];

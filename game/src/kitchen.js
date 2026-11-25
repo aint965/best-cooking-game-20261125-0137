@@ -26,7 +26,9 @@ export function buildStations() {
     const col = i % 2;
     const row = Math.floor(i / 2);
     const x = 28 + col * (crateSize.w + crateGap);
-    const y = 200 + row * (crateSize.h + crateGap);
+    // Crates sit below the order board (which ends at y 206) with a gap
+    // for the BAHAN label pill painted above them.
+    const y = 212 + row * (crateSize.h + crateGap);
     stations.push(station(`crate-${ing}`, 'crate', INGREDIENTS[ing].name, { x, y, w: crateSize.w, h: crateSize.h }, { x: 246, y: y + crateSize.h / 2 }, { ing }));
   });
   // Chopping board, centre-left.
@@ -38,8 +40,9 @@ export function buildStations() {
   // Plating counter, two plates, bottom centre.
   stations.push(station('plate-0', 'plate', 'Piring 1', { x: 356, y: 540, w: 128, h: 88 }, { x: 420, y: 505 }, { plate: 0 }));
   stations.push(station('plate-1', 'plate', 'Piring 2', { x: 616, y: 540, w: 128, h: 88 }, { x: 680, y: 505 }, { plate: 1 }));
-  // Serving window, right wall.
-  stations.push(station('window', 'window', 'Jendela Saji', { x: 900, y: 220, w: 356, h: 260 }, { x: 1078, y: 520 }));
+  // Serving window, right wall — below the order board so its label pill
+  // fits in the gap between board and window.
+  stations.push(station('window', 'window', 'Jendela Saji', { x: 900, y: 236, w: 356, h: 260 }, { x: 1078, y: 520 }));
   // Trash bin, bottom right.
   stations.push(station('trash', 'trash', 'Sampah', { x: 900, y: 560, w: 110, h: 90 }, { x: 955, y: 538 }));
   return stations;

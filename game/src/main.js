@@ -10,7 +10,7 @@ import { MAX_ACTIVE_ORDERS, makeOrder, tickOrders, findOrderForPlate, scoreForSe
 import { SoundFX } from './audio.js';
 import { Input } from './input.js';
 import { buildStations, buildObstacles, stationAtPoint, nearestUsableStation, movePlayer, interact, burnerState, PLAYER_SPEED } from './kitchen.js';
-import { createRenderer, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER } from './render.js';
+import { createRenderer, SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER, MUTE_BUTTON } from './render.js';
 
 const SHIFT_LENGTH = 150; // seconds per shift
 const COMBO_WINDOW = 15; // seconds between serves to keep the combo alive
@@ -83,6 +83,7 @@ function freshGame(rng) {
     muted: false,
     orders: [],
     spawnIn: 2,
+    customerIndex: 0,
     plates: [{ items: [] }, { items: [] }],
     burners: [{ item: null, t: 0 }, { item: null, t: 0 }],
     board: { item: null, taps: 0 },
@@ -126,7 +127,7 @@ function loseLife(reason) {
   game.combo = 1;
   sfx.error();
   toast(reason);
-  addFloat(640, 220, '−1 NYAWA', '#d9382b', 26);
+  addFloat(640, 268, '−1 NYAWA', '#d9382b', 26);
   if (game.lives <= 0) endGame(true);
 }
 
@@ -145,6 +146,7 @@ function endGame(livesOut) {
     saveBest(game.best);
   }
   sfx.stopSizzle();
+  sfx.stopMusic();
   sfx.gameOver();
   announce(`Shift selesai. Skor ${game.score}.`);
 }
@@ -158,6 +160,7 @@ function startGame() {
   Object.assign(game, fresh);
   sfx.ensure();
   sfx.start();
+  sfx.startMusic(); // Music starts here, on the player's own gesture — never on load.
   announce('Masak! Ambil bahan pertama dari rak.');
 }
 
@@ -336,7 +339,7 @@ function update(dt) {
   const expired = tickOrders(game.orders, dt);
   for (const order of expired) {
     game.failed += 1;
-    addFloat(640, 200, `${order.recipe.name} hangus!`, '#d9382b', 20);
+    addFloat(640, 232, `${order.recipe.name} hangus!`, '#d9382b', 20);
     loseLife(`Pesanan ${order.recipe.name} keburu dingin!`);
     if (game.screen !== SCREEN_PLAY) break;
   }
@@ -389,6 +392,11 @@ input.onInteract = () => {
   if (game.screen === SCREEN_PLAY) useNearestStation();
 };
 input.onClick = (x, y) => {
+  // The on-screen music button answers before anything else, on any screen.
+  if (x >= MUTE_BUTTON.x && x < MUTE_BUTTON.x + MUTE_BUTTON.w && y >= MUTE_BUTTON.y && y < MUTE_BUTTON.y + MUTE_BUTTON.h) {
+    game.muted = sfx.toggleMute();
+    return;
+  }
   if (game.screen === SCREEN_TITLE || game.screen === SCREEN_OVER) {
     startGame();
     return;
@@ -498,7 +506,7 @@ function stageShot(name) {
     g.board = { item: null, taps: 0 };
     g.hand = { kind: 'item', ing: 'ayam', prep: 'ready' };
     g.player = { x: 620, y: 500, target: null, pending: null, facing: 1 };
-    g.floats = [{ x: 640, y: 220, text: 'SERVICE RUSH!', color: '#d9382b', size: 28, life: 1.2 }];
+    g.floats = [{ x: 640, y: 240, text: 'SERVICE RUSH!', color: '#d9382b', size: 28, life: 1.2 }];
     g.nearestStation = g.stations.find((s) => s.id === 'plate-0');
   } else if (name === 'end') {
     g.screen = SCREEN_OVER;
@@ -506,6 +514,13 @@ function stageShot(name) {
     g.score = 4280;
     g.overStats = { score: 4280, served: 9, bestCombo: 4, failed: 2, best: 4280, livesOut: false };
   }
+  // A different face at the window in every shot: the window shows the
+  // customer of the first open order (or customerIndex when there is none).
+  const shotCustomers = { cover: [1, 2, 0], play: [2, 0], rush: [0, 3, 1] };
+  if (shotCustomers[name]) {
+    g.orders.forEach((o, i) => { o.customer = shotCustomers[name][i % shotCustomers[name].length]; });
+  }
+  if (name === 'end') g.customerIndex = 3;
   g.nearestStation = g.nearestStation ?? null;
   announce(`Dapur Kilat — ${name}.`);
 }
@@ -563,6 +578,27 @@ async function runSelftest() {
     key('Enter');
     await waitFor(() => game.screen === SCREEN_PLAY, 5000, 'game starts');
     log('started');
+    // Music starts with the game (on the player's own gesture) and the
+    // mute toggle answers from the keyboard and the on-screen button.
+    report.music = { timer: !!sfx.musicTimer, ctxState: sfx.ctx ? sfx.ctx.state : 'none' };
+    log(`music: timer=${sfx.musicTimer ? 'on' : 'off'} ctx=${sfx.ctx ? sfx.ctx.state : 'none'}`);
+    if (!sfx.musicTimer) throw new Error('background music did not start');
+    key('KeyM');
+    await sleep(100);
+    if (!game.muted) throw new Error('M key did not mute');
+    log('M key mutes');
+    key('KeyM');
+    await sleep(100);
+    if (game.muted) throw new Error('M key did not unmute');
+    log('M key unmutes');
+    clickAt(MUTE_BUTTON.x + 10, MUTE_BUTTON.y + 10);
+    await sleep(100);
+    if (!game.muted) throw new Error('on-screen mute button did not mute');
+    log('on-screen mute button mutes');
+    clickAt(MUTE_BUTTON.x + 10, MUTE_BUTTON.y + 10);
+    await sleep(100);
+    if (game.muted) throw new Error('on-screen mute button did not unmute');
+    log('on-screen mute button unmutes');
 
     // Keyboard movement really moves the cook.
     const x0 = game.player.x;
@@ -572,46 +608,91 @@ async function runSelftest() {
     if (game.player.x <= x0 + 20) throw new Error('keyboard movement did not move the cook');
     log(`keyboard move: x ${Math.round(x0)} -> ${Math.round(game.player.x)}`);
 
-    // Serve the first order, ingredient by ingredient, through real clicks.
-    const order = game.orders[0] || null;
-    if (!order) {
-      await waitFor(() => game.orders.length > 0, 20000, 'first order appears');
-    }
-    const target = game.orders[0];
-    log(`serving order: ${target.recipe.name} (${target.recipe.items.join('+')})`);
-    for (const ing of target.recipe.items) {
-      const prep = INGREDIENTS[ing].prep;
-      await clickStation(`crate-${ing}`);
-      await waitFor(() => game.hand && game.hand.ing === ing, 15000, `pick ${ing}`);
-      log(`picked ${ing}`);
-      if (prep === 'chop') {
-        await clickStation('board');
-        await waitFor(() => game.board.item && game.board.item.ing === ing, 15000, `place ${ing} on board`);
-        for (let t = 0; t < 3; t++) {
-          await clickStation('board');
-          await sleep(150);
-        }
-        await waitFor(() => game.hand && game.hand.ing === ing && game.hand.prep === 'ready', 15000, `chop ${ing} done`);
-        log(`chopped ${ing}`);
-      } else if (prep === 'fry') {
-        await clickStation('burner-0');
-        await waitFor(() => game.burners[0].item && game.burners[0].item.ing === ing, 15000, `place ${ing} on burner`);
-        await waitFor(() => burnerState(game.burners[0]) === 'done', 15000, `fry ${ing} done`);
-        await clickStation('burner-0');
-        await waitFor(() => game.hand && game.hand.ing === ing && game.hand.prep === 'ready', 15000, `take fried ${ing}`);
-        log(`fried ${ing}`);
+    // Clear the cook's hands and plate 0: take every item back off the
+    // plate and throw it away, so a fresh order starts from empty.
+    async function clearPlate() {
+      if (game.hand) {
+        await clickStation('trash');
+        await waitFor(() => !game.hand, 10000, 'trash hand item');
       }
-      await clickStation('plate-0');
-      await waitFor(() => game.plates[0].items.includes(ing), 15000, `plate ${ing}`);
-      log(`plated ${ing}`);
+      while (game.plates[0].items.length > 0) {
+        await clickStation('plate-0');
+        await waitFor(() => game.hand && (game.hand.kind === 'item' || game.hand.kind === 'plate'), 10000, 'take item back off plate');
+        await clickStation('trash');
+        await waitFor(() => !game.hand, 10000, 'trash plate item');
+      }
     }
-    // Pick the finished plate up and serve it at the window.
-    await clickStation('plate-0');
-    await waitFor(() => game.hand && game.hand.kind === 'plate', 15000, 'pick up finished plate');
-    log('picked up finished plate');
-    await clickStation('window');
-    await waitFor(() => game.served >= 1, 15000, 'serve at window');
-    log(`served! score=${game.score} served=${game.served}`);
+
+    // Serve one order, ingredient by ingredient, through real clicks.
+    // Throws when the order expires mid-serve, so the caller can recover.
+    async function serveOrder(target) {
+      const stillThere = () => game.orders[0] && game.orders[0].id === target.id;
+      log(`serving order: ${target.recipe.name} (${target.recipe.items.join('+')})`);
+      for (const ing of target.recipe.items) {
+        if (!stillThere()) throw new Error('order expired mid-serve');
+        const prep = INGREDIENTS[ing].prep;
+        await clickStation(`crate-${ing}`);
+        await waitFor(() => game.hand && game.hand.ing === ing, 15000, `pick ${ing}`);
+        log(`picked ${ing}`);
+        if (prep === 'chop') {
+          await clickStation('board');
+          await waitFor(() => game.board.item && game.board.item.ing === ing, 15000, `place ${ing} on board`);
+          for (let t = 0; t < 3; t++) {
+            await clickStation('board');
+            await sleep(150);
+          }
+          await waitFor(() => game.hand && game.hand.ing === ing && game.hand.prep === 'ready', 15000, `chop ${ing} done`);
+          log(`chopped ${ing}`);
+        } else if (prep === 'fry') {
+          await clickStation('burner-0');
+          await waitFor(() => game.burners[0].item && game.burners[0].item.ing === ing, 15000, `place ${ing} on burner`);
+          await waitFor(() => burnerState(game.burners[0]) === 'done', 15000, `fry ${ing} done`);
+          await clickStation('burner-0');
+          await waitFor(() => game.hand && game.hand.ing === ing && game.hand.prep === 'ready', 15000, `take fried ${ing}`);
+          log(`fried ${ing}`);
+        }
+        if (!stillThere()) throw new Error('order expired mid-serve');
+        await clickStation('plate-0');
+        await waitFor(() => game.plates[0].items.includes(ing), 15000, `plate ${ing}`);
+        log(`plated ${ing}`);
+      }
+      if (!stillThere()) throw new Error('order expired mid-serve');
+      // Pick the finished plate up and serve it at the window.
+      await clickStation('plate-0');
+      await waitFor(() => game.hand && game.hand.kind === 'plate', 15000, 'pick up finished plate');
+      log('picked up finished plate');
+      const servedBefore = game.served;
+      await clickStation('window');
+      await waitFor(() => game.served > servedBefore, 15000, 'serve at window');
+      log(`served! score=${game.score} served=${game.served}`);
+    }
+
+    // Serve three different recipes end to end; an order that expires
+    // mid-serve is abandoned (plate cleared) and the next one is served.
+    const servedRecipes = [];
+    let attempts = 0;
+    while (servedRecipes.length < 3 && attempts < 6) {
+      attempts += 1;
+      if (!game.orders.length) {
+        await waitFor(() => game.orders.length > 0, 20000, 'next order appears');
+      }
+      const target = game.orders[0];
+      try {
+        await serveOrder(target);
+        servedRecipes.push(target.recipe.name);
+      } catch (e) {
+        const gone = !game.orders.some((o) => o.id === target.id);
+        if (String(e.message) === 'order expired mid-serve' || gone) {
+          log(`order ${target.recipe.name} expired mid-serve — clearing plate`);
+          await clearPlate();
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (servedRecipes.length < 3) throw new Error(`only served ${servedRecipes.length} orders`);
+    log(`served 3 orders: ${servedRecipes.join(', ')}`);
+    report.recipes = servedRecipes;
 
     // The shift timer really counts down and the game ends.
     if (game.score <= 0) throw new Error('score did not increase after serving');

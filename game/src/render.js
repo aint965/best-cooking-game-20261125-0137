@@ -37,6 +37,16 @@ const C = {
   cream: '#fff3d6',
 };
 
+export const MUTE_BUTTON = { x: 1208, y: 672, w: 56, h: 36 };
+
+/** The regulars at the serving window: skin, hair, outfit and hat differ. */
+export const CUSTOMERS = [
+  { name: 'Pak Budi', skin: '#d9a06b', hair: 'white', hairColor: '#e8e8e8', outfit: '#3f6b8a', hat: 'none', glasses: true },
+  { name: 'Bu Sari', skin: '#e8b98a', hair: 'bun', hairColor: '#2b2b2b', outfit: '#b03a2e', hat: 'none', glasses: false },
+  { name: 'Mas Dedi', skin: '#c98a5a', hair: 'peci', hairColor: '#1f1f1f', outfit: '#3f7a4a', hat: 'peci', glasses: false },
+  { name: 'Mbak Rina', skin: '#a06a42', hair: 'curly', hairColor: '#2b2b2b', outfit: '#7a4a8a', hat: 'headband', glasses: false },
+];
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   const view = { scale: 1, x: 0, y: 0 };
@@ -177,23 +187,125 @@ export function createRenderer(canvas) {
 
   // ------------------------------------------------------------ the kitchen
 
+  /** A small deterministic hash, so the floor pattern is the same every run. */
+  function tileHash(tx, ty) {
+    let h = (tx * 374761393 + ty * 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  function drawWall() {
+    // The wall band between the top bar and the order board: subway tiles,
+    // a shelf with jars on the left, hanging pans on the right.
+    ctx.fillStyle = '#efe0bd';
+    ctx.fillRect(0, 64, W, 36);
+    const tw = 64;
+    const th = 18;
+    for (let row = 0; row < 2; row++) {
+      for (let col = -1; col < 21; col++) {
+        const off = row % 2 === 0 ? 0 : tw / 2;
+        ctx.fillStyle = (col + row) % 2 === 0 ? '#f3e3c2' : '#e7d3a8';
+        ctx.fillRect(col * tw + off, 64 + row * th, tw - 2, th - 2);
+      }
+    }
+    // Shelf with jars, left.
+    ctx.fillStyle = '#5d3620';
+    ctx.fillRect(48, 88, 252, 8);
+    const jars = [
+      { x: 66, color: '#7a9b4a', lid: '#5d3620' },
+      { x: 128, color: '#d9382b', lid: '#5d3620' },
+      { x: 190, color: '#3d2412', lid: '#d9382b' },
+      { x: 246, color: '#e8b64c', lid: '#5d3620' },
+    ];
+    for (const jar of jars) {
+      ctx.fillStyle = jar.color;
+      roundRect(jar.x, 66, 30, 22, 5);
+      ctx.fill();
+      ctx.fillStyle = jar.lid;
+      ctx.fillRect(jar.x + 4, 62, 22, 6);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(jar.x + 6, 70, 4, 14);
+    }
+    // Hanging rail with pans and a ladle, right.
+    ctx.fillStyle = '#6e7a82';
+    ctx.fillRect(1000, 68, 240, 4);
+    for (const hx of [1024, 1080, 1136, 1192]) {
+      ctx.fillStyle = '#4a545a';
+      ctx.fillRect(hx - 1, 72, 2, 6);
+    }
+    for (const px of [1024, 1080, 1136]) {
+      ctx.fillStyle = '#2b2b2b';
+      ctx.beginPath(); ctx.arc(px, 90, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#9aa5ad';
+      ctx.beginPath(); ctx.arc(px, 90, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#2b2b2b';
+      ctx.fillRect(px - 1, 76, 2, 6);
+    }
+    // Ladle: bowl and handle.
+    ctx.strokeStyle = '#9aa5ad';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(1192, 78); ctx.lineTo(1192, 94); ctx.stroke();
+    ctx.fillStyle = '#9aa5ad';
+    ctx.beginPath(); ctx.arc(1192, 96, 5, 0, Math.PI * 2); ctx.fill();
+  }
+
   function drawFloor() {
     ctx.fillStyle = C.wall;
     ctx.fillRect(0, 168, W, 552);
-    // Terracotta checker tiles.
+    drawWall();
+    // Terracotta tiles in four shades, with the odd sage or cream accent
+    // tile, so the floor reads as worn kitchen tile, not a flat checker.
     const tile = 56;
+    const shades = ['#c96f4a', '#b95f3d', '#cf7a52', '#b25a38'];
     for (let ty = 0; ty < 10; ty++) {
       for (let tx = 0; tx < 23; tx++) {
-        ctx.fillStyle = (tx + ty) % 2 === 0 ? C.floorA : C.floorB;
+        const h = tileHash(tx, ty);
+        if (h < 0.05) ctx.fillStyle = '#7a8b5a';
+        else if (h < 0.09) ctx.fillStyle = '#e8d9b0';
+        else ctx.fillStyle = shades[Math.floor(h * 4) % 4];
         ctx.fillRect(tx * tile, 176 + ty * tile, tile, tile);
       }
     }
-    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillStyle = 'rgba(0,0,0,0.14)';
     for (let ty = 0; ty < 10; ty++) ctx.fillRect(0, 176 + ty * tile, W, 2);
     for (let tx = 0; tx < 23; tx++) ctx.fillRect(tx * tile, 176, 2, 552);
+    // Wear: faint stains and scuffs on the open floor, never under a counter.
+    ctx.fillStyle = 'rgba(0,0,0,0.06)';
+    for (const [sx, sy, rx, ry] of [[300, 660, 46, 18], [980, 660, 54, 20], [520, 240, 40, 14], [1120, 600, 36, 14], [180, 620, 30, 12]]) {
+      ellipse(sx, sy, rx, ry);
+      ctx.fill();
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+    ctx.lineWidth = 3;
+    for (const [sx, sy] of [[420, 700], [860, 700], [1050, 250]]) {
+      ctx.beginPath(); ctx.arc(sx, sy, 26, Math.PI * 0.2, Math.PI * 0.8); ctx.stroke();
+    }
+    // Floor mats where the cook stands to work: stove, plates, window.
+    drawMat(560, 436, 260, 42, '#4a5d3a', '#33402a');
+    drawMat(380, 636, 340, 48, '#3f6b5e', '#2c4d43');
+    drawMat(1000, 496, 156, 48, '#8a4a30', '#6b3822');
     // Wall band above the floor.
     ctx.fillStyle = C.wallTrim;
     ctx.fillRect(0, 168, W, 8);
+  }
+
+  /** A woven-look floor mat: dark base, lighter border, dashed centre line. */
+  function drawMat(x, y, w, h, color, border) {
+    ctx.fillStyle = color;
+    roundRect(x, y, w, h, 8);
+    ctx.fill();
+    ctx.strokeStyle = border;
+    ctx.lineWidth = 3;
+    roundRect(x + 3, y + 3, w - 6, h - 6, 6);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y + h / 2);
+    ctx.lineTo(x + w - 10, y + h / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   function drawCrates(game) {
@@ -201,19 +313,17 @@ export function createRenderer(canvas) {
       if (s.kind !== 'crate') continue;
       const ing = INGREDIENTS[s.ing];
       const r = s.rect;
+      // Crates alternate two wood tones, so the row reads less flat.
+      const tone = (game.stations.indexOf(s) % 2 === 0) ? '#a9713f' : '#96603a';
       ctx.fillStyle = C.wood;
       roundRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 8);
       ctx.fill();
-      ctx.fillStyle = '#a9713f';
+      ctx.fillStyle = tone;
       roundRect(r.x, r.y, r.w, r.h, 6);
       ctx.fill();
       drawFood(s.ing, r.x + r.w / 2, r.y + 30, 44, 'ready');
       text(ing.name, r.x + r.w / 2, r.y + r.h - 8, 14, '#fff8e7', 'center');
     }
-    ctx.fillStyle = C.paper;
-    roundRect(72, 180, 80, 22, 11);
-    ctx.fill();
-    text('BAHAN', 112, 196, 15, C.ink, 'center');
   }
 
   function drawBoard(game) {
@@ -222,7 +332,8 @@ export function createRenderer(canvas) {
     ctx.fillStyle = C.counter;
     roundRect(r.x, r.y, r.w, r.h, 10);
     ctx.fill();
-    ctx.fillStyle = C.counterTop;
+    // Sage-green counter top, so the board reads apart from the wood crates.
+    ctx.fillStyle = '#7a8b5a';
     roundRect(r.x, r.y, r.w, 26, 10);
     ctx.fill();
     // The wooden board itself.
@@ -247,10 +358,6 @@ export function createRenderer(canvas) {
       text('TALENAN', r.x + r.w / 2, r.y + 62, 16, '#6b4a26', 'center');
       text('bawa cabai / sayur ke sini', r.x + r.w / 2, r.y + 84, 11, '#6b4a26', 'center');
     }
-    ctx.fillStyle = C.paper;
-    roundRect(r.x + r.w / 2 - 52, r.y - 28, 104, 20, 10);
-    ctx.fill();
-    text('TALENAN', r.x + r.w / 2, r.y - 13, 13, C.ink, 'center');
   }
 
   function drawStove(game) {
@@ -308,10 +415,6 @@ export function createRenderer(canvas) {
         ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill();
       }
     }
-    ctx.fillStyle = C.paper;
-    roundRect(r.x + r.w / 2 - 46, r.y - 28, 92, 20, 10);
-    ctx.fill();
-    text('KOMPOR', r.x + r.w / 2, r.y - 13, 13, C.ink, 'center');
   }
 
   function drawPlates(game) {
@@ -320,10 +423,14 @@ export function createRenderer(canvas) {
       const plate = game.plates[s.plate];
       const cx = s.rect.x + s.rect.w / 2;
       const cy = s.rect.y + s.rect.h / 2;
-      // Counter under the plate.
+      // Counter under the plate, with a checker tile trim along its top.
       ctx.fillStyle = C.counter;
       roundRect(s.rect.x, s.rect.y, s.rect.w, s.rect.h, 10);
       ctx.fill();
+      for (let i = 0; i < 8; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#e8d9b0' : '#b95f3d';
+        ctx.fillRect(s.rect.x + 6 + i * 15, s.rect.y + 4, 13, 8);
+      }
       // The plate.
       ctx.fillStyle = '#fdfdf8';
       ellipse(cx, cy, 52, 34);
@@ -345,11 +452,54 @@ export function createRenderer(canvas) {
         ctx.lineWidth = 4;
         ellipse(cx, cy, 58, 40);
         ctx.stroke();
-        text('SIAP SAJI!', cx, cy - 46, 15, C.gold, 'center');
-      } else if (n > 0) {
-        text(`${n} bahan`, cx, cy - 44, 12, C.muted, 'center');
       }
-      text(`PIRING ${s.plate + 1}`, cx, s.rect.y + s.rect.h + 16, 13, C.ink, 'center');
+    }
+  }
+
+  /** One customer at the window: skin, hair, hat and outfit all differ. */
+  function drawCustomer(c, cx, cy) {
+    // Shoulders and outfit, inside the opening.
+    ctx.fillStyle = c.outfit;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 78, 52, 30, 0, Math.PI, 0);
+    ctx.fill();
+    // Head.
+    ctx.fillStyle = c.skin;
+    ctx.beginPath(); ctx.arc(cx, cy, 42, 0, Math.PI * 2); ctx.fill();
+    // Hair and hats.
+    if (c.hair === 'bun') {
+      ctx.fillStyle = c.hairColor;
+      ctx.beginPath(); ctx.arc(cx, cy - 34, 44, Math.PI, 0); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy - 40, 13, 0, Math.PI * 2); ctx.fill();
+    } else if (c.hair === 'white') {
+      ctx.fillStyle = c.hairColor;
+      ctx.beginPath(); ctx.arc(cx, cy - 30, 43, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+    } else if (c.hair === 'curly') {
+      ctx.fillStyle = c.hairColor;
+      for (const [hx, hy, hr] of [[-30, -28, 12], [-10, -38, 13], [12, -38, 13], [30, -26, 12]]) {
+        ctx.beginPath(); ctx.arc(cx + hx, cy + hy, hr, 0, Math.PI * 2); ctx.fill();
+      }
+      // Yellow headband.
+      ctx.strokeStyle = '#f2c14e';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(cx, cy - 6, 40, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    }
+    if (c.hat === 'peci') {
+      ctx.fillStyle = '#1f1f1f';
+      ctx.beginPath(); ctx.arc(cx, cy - 26, 42, Math.PI, 0); ctx.fill();
+      ctx.fillRect(cx - 42, cy - 28, 84, 8);
+    }
+    // Eyes and smile.
+    ctx.fillStyle = '#2b2b2b';
+    ctx.beginPath(); ctx.arc(cx - 16, cy - 4, 5, 0, Math.PI * 2); ctx.arc(cx + 16, cy - 4, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#2b2b2b';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(cx, cy + 8, 14, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+    if (c.glasses) {
+      ctx.strokeStyle = '#2b2b2b';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx - 16, cy - 4, 9, 0, Math.PI * 2); ctx.arc(cx + 16, cy - 4, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 7, cy - 4); ctx.lineTo(cx + 7, cy - 4); ctx.stroke();
     }
   }
 
@@ -363,17 +513,15 @@ export function createRenderer(canvas) {
     ctx.fillStyle = '#2f2118';
     roundRect(r.x, r.y, r.w, r.h, 10);
     ctx.fill();
-    // A waiting customer, peeking in.
-    const carryingPlate = game.hand && game.hand.kind === 'plate';
-    ctx.fillStyle = '#e8b98a';
-    ctx.beginPath(); ctx.arc(r.x + 120, r.y + 130, 42, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#f2c14e';
-    ctx.beginPath(); ctx.arc(r.x + 120, r.y + 96, 44, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = '#2b2b2b';
-    ctx.beginPath(); ctx.arc(r.x + 104, r.y + 126, 5, 0, Math.PI * 2); ctx.arc(r.x + 136, r.y + 126, 5, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#2b2b2b';
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(r.x + 120, r.y + 138, 14, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+    // A waiting customer, peeking in: whoever placed the first open order.
+    const customerIndex = game.orders.length > 0
+      ? (game.orders[0].customer ?? 0)
+      : (game.customerIndex ?? 0);
+    const customer = CUSTOMERS[customerIndex % CUSTOMERS.length];
+    drawCustomer(customer, r.x + 120, r.y + 130);
+    // Name tag on the right of the opening: the game-over panel covers the
+    // centre of the screen, so a tag on the left would be half hidden.
+    text(customer.name, r.x + r.w - 16, r.y + 130, 13, '#fff8e7', 'right');
     // The serving counter and bell.
     ctx.fillStyle = C.counterTop;
     roundRect(r.x, r.y + r.h - 70, r.w, 70, 10);
@@ -383,6 +531,7 @@ export function createRenderer(canvas) {
     ctx.fillRect(r.x + 254, r.y + r.h - 84, 12, 6);
     ctx.fillStyle = '#8a6a1e';
     ctx.beginPath(); ctx.arc(r.x + 260, r.y + r.h - 108, 4, 0, Math.PI * 2); ctx.fill();
+    const carryingPlate = game.hand && game.hand.kind === 'plate';
     if (carryingPlate) {
       const pulse = 0.6 + 0.4 * Math.sin(game.now * 6);
       ctx.strokeStyle = `rgba(242,193,78,${pulse})`;
@@ -390,7 +539,6 @@ export function createRenderer(canvas) {
       roundRect(r.x + 4, r.y + 4, r.w - 8, r.h - 8, 10);
       ctx.stroke();
     }
-    text('JENDELA SAJI', r.x + r.w / 2, r.y - 12, 16, C.ink, 'center');
     text('antar piring lengkap ke sini', r.x + r.w / 2, r.y + r.h - 26, 13, '#fff8e7', 'center');
   }
 
@@ -536,26 +684,40 @@ export function createRenderer(canvas) {
       text(`TERBAIK ${game.best}`, W - 24, 58, 14, '#c9b183', 'right');
     }
     if (game.muted) text('SUARA MATI (M)', W - 24, 12, 11, '#c9b183', 'right');
+    drawMuteButton(game);
+  }
+
+  /** The on-screen music mute button, bottom-right (M key does the same). */
+  function drawMuteButton(game) {
+    const b = MUTE_BUTTON;
+    ctx.fillStyle = game.muted ? '#8a2f26' : '#3f6b5e';
+    roundRect(b.x, b.y, b.w, b.h, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,248,231,0.6)';
+    ctx.lineWidth = 2;
+    roundRect(b.x, b.y, b.w, b.h, 8);
+    ctx.stroke();
+    text(game.muted ? 'SENYAP' : 'MUSIK', b.x + b.w / 2, b.y + 23, 12, '#fff8e7', 'center');
   }
 
   function drawOrderBoard(game) {
     // The board itself: tall enough that every line of a ticket (dish name,
     // ingredient icons, patience bar, seconds, points) sits inside its card
     // with clear padding — the points line used to ride the card's bottom
-    // edge and read as clipped.
+    // edge and read as clipped. It sits below the wall band (y 64–100).
     ctx.fillStyle = C.wood;
-    roundRect(12, 66, W - 24, 106, 10);
+    roundRect(12, 100, W - 24, 106, 10);
     ctx.fill();
     ctx.fillStyle = C.woodDark;
-    text('PAPAN', 32, 88, 14, '#e8d9b0');
-    text('PESANAN', 32, 106, 14, '#e8d9b0');
-    text('sajikan sebelum', 32, 130, 12, '#e8d9b0');
-    text('sabar habis!', 32, 146, 12, '#e8d9b0');
+    text('PAPAN', 32, 122, 14, '#e8d9b0');
+    text('PESANAN', 32, 140, 14, '#e8d9b0');
+    text('sajikan sebelum', 32, 164, 12, '#e8d9b0');
+    text('sabar habis!', 32, 180, 12, '#e8d9b0');
     const slotW = 330;
     const slotX0 = 200;
     for (let i = 0; i < 3; i++) {
       const x = slotX0 + i * (slotW + 12);
-      const y = 74;
+      const y = 108;
       const order = game.orders[i];
       if (!order) {
         ctx.strokeStyle = 'rgba(255,248,231,0.35)';
@@ -651,11 +813,47 @@ export function createRenderer(canvas) {
   function drawToast(game) {
     if (!game.toast || game.now > game.toast.until) return;
     ctx.fillStyle = '#3a2a1a';
-    roundRect(W / 2 - 200, 176, 400, 34, 17);
+    roundRect(W / 2 - 200, 216, 400, 34, 17);
     ctx.fill();
     ctx.globalAlpha = 1;
     ctx.font = `bold 16px ${FONT}`;
-    text(game.toast.text, W / 2, 199, 16, '#fff8e7', 'center');
+    text(game.toast.text, W / 2, 239, 16, '#fff8e7', 'center');
+  }
+
+  /**
+   * Every station label, painted last — after the cook, the floats, the
+   * board and the HUD — so no sprite can ever cover a label. Plate counts
+   * sit above-left of their plate, clear of the cook's approach point.
+   */
+  function drawStationLabels(game) {
+    const pill = (cx, y, w, label, size = 13) => {
+      ctx.fillStyle = C.paper;
+      roundRect(cx - w / 2, y - 16, w, 20, 10);
+      ctx.fill();
+      text(label, cx, y - 1, size, C.ink, 'center');
+    };
+    pill(112, 208, 80, 'BAHAN', 15);
+    const board = game.stations.find((st) => st.id === 'board');
+    pill(board.rect.x + board.rect.w / 2, board.rect.y - 12, 104, 'TALENAN');
+    const stove = game.stations.find((st) => st.id === 'stove');
+    pill(stove.rect.x + stove.rect.w / 2, stove.rect.y - 12, 92, 'KOMPOR');
+    const win = game.stations.find((st) => st.id === 'window');
+    pill(win.rect.x + win.rect.w / 2, win.rect.y - 12, 130, 'JENDELA SAJI', 16);
+    for (const s of game.stations) {
+      if (s.kind !== 'plate') continue;
+      const plate = game.plates[s.plate];
+      const cx = s.rect.x + s.rect.w / 2;
+      const cy = s.rect.y + s.rect.h / 2;
+      const n = plate.items.length;
+      const complete = n > 0 && game.orders.some((o) => o.recipe.items.length === n && o.recipe.items.every((ing) => plate.items.includes(ing)));
+      const count = complete ? 'SIAP SAJI!' : `${n} bahan`;
+      const countW = complete ? 104 : 76;
+      ctx.fillStyle = complete ? C.gold : C.paper;
+      roundRect(cx - 58 - countW / 2, cy - 62, countW, 20, 10);
+      ctx.fill();
+      text(count, cx - 58, cy - 47, complete ? 14 : 12, complete ? '#3a2a1a' : C.muted, 'center');
+      pill(cx, s.rect.y + s.rect.h + 16, 84, `PIRING ${s.plate + 1}`);
+    }
   }
 
   /** Paint one frame of the game. */
@@ -678,6 +876,8 @@ export function createRenderer(canvas) {
     drawOrderBoard(game);
     drawHud(game);
     drawToast(game);
+    // Station labels paint last, so no sprite ever covers one.
+    drawStationLabels(game);
     if (game.screen === SCREEN_TITLE) drawTitle(game);
     else if (game.screen === SCREEN_PAUSED) drawPaused(game);
     else if (game.screen === SCREEN_OVER) drawOver(game);
